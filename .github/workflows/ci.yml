@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Tests (headless Qt)
+    runs-on: windows-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Run tests
+        run: python -m pytest tests -q
+
+  build:
+    name: Package for Windows
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Build executable
+        run: python -m PyInstaller --noconfirm --clean ai_desktop_assistant.spec
+
+      - name: Self-check the packaged app
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: "& 'dist/AI Desktop Assistant/AI Desktop Assistant.exe' --self-check"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ai-desktop-assistant-windows
+          path: dist/AI Desktop Assistant
+          if-no-files-found: error

@@ -1,0 +1,31 @@
+# Virtual environment
+.venv/
+venv/
+
+# Environment variables and secrets
+.env
+
+# Python cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Build artifacts
+build/
+dist/
+*.spec
+!ai_desktop_assistant.spec
+
+# Local application data
+data/*.db
+data/*.sqlite3
+data/ui_state.json
+data/backups/
+backups/
+
+# Freebuff workspace metadata
+.freebuff/
+
+# IDE files
+.vscode/
+.idea/

@@ -1,0 +1,11 @@
+PySide6
+openai
+PyMuPDF
+psutil
+python-dotenv
+# httpx2 کتابخانه HTTP پشت openai است و برای ساخت کلاینت بدون پروکسی در سرویس‌های محلی
+# مستقیماً import می‌شود؛ پس صریح هم نام برده می‌شود.
+httpx2
+sentence-transformers
+pytest
+pyinstaller
