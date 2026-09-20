@@ -44,10 +44,25 @@ def test_raw_english_detail_is_not_shown_for_known_categories():
 
 
 def test_unexpected_error_keeps_the_class_name_for_diagnosis():
-    message = describe_error(make_error("WeirdError", message="something odd"))
+    message = describe_error(
+        make_error(
+            "WeirdError",
+            message='Authorization: Bearer abc123, payload={"key":"sk-secret"}',
+        )
+    )
 
     assert "WeirdError" in message
-    assert "something odd" in message
+    assert "abc123" not in message
+    assert "sk-secret" not in message
+
+
+def test_custom_service_error_redacts_credentials():
+    message = describe_error(
+        ChatServiceError("provider failed: OPENAI_API_KEY=sk-secret")
+    )
+
+    assert "sk-secret" not in message
+    assert "REDACTED" in message
 
 
 def test_plain_oserror_is_treated_as_a_connection_problem():

@@ -1,11 +1,13 @@
 """تست‌های سیستم تم تیره/روشن و کنتراست رنگ‌ها."""
 
 import pytest
+from PySide6.QtCore import QRect
 
 from app.services.ui_state import UiStateStore
 from app.ui.theme import (
     DARK,
     LIGHT,
+    SYSTEM,
     DARK_PALETTE,
     LIGHT_PALETTE,
     THEMES,
@@ -58,10 +60,20 @@ def test_text_on_surface_contrast_meets_wcag_in_both_themes():
         assert contrast_ratio(pal["dangerText"], pal["dangerBg"]) >= 4.5
 
 
+def test_hover_text_is_readable_on_raised_surface_in_both_themes():
+    for pal in (DARK_PALETTE, LIGHT_PALETTE):
+        assert contrast_ratio(pal["textPrimary"], pal["raised"]) >= 4.5
+
+    for theme, pal in ((DARK, DARK_PALETTE), (LIGHT, LIGHT_PALETTE)):
+        output = stylesheet(theme)
+        assert f"color: {pal['textPrimary']};" in output
+
+
 def test_normalise_theme_falls_back_to_dark():
     assert normalise_theme("light") == LIGHT
     assert normalise_theme("LIGHT") == LIGHT
     assert normalise_theme("dark") == DARK
+    assert normalise_theme("system") == SYSTEM
     assert normalise_theme("neon") == DARK
     assert normalise_theme("") == DARK
     assert normalise_theme(None) == DARK
@@ -70,6 +82,11 @@ def test_normalise_theme_falls_back_to_dark():
 def test_palette_rejects_unknown_theme():
     assert palette("neon") == DARK_PALETTE
     assert palette(LIGHT) == LIGHT_PALETTE
+
+
+def test_system_theme_is_a_supported_preference():
+    assert SYSTEM in THEMES
+    assert stylesheet(SYSTEM)
 
 
 # ------------------------------------------------------------ ذخیره وضعیت تم
@@ -119,6 +136,21 @@ def test_switch_theme_updates_style_and_persists(qt_app, tmp_path, monkeypatch):
     window.close()
 
 
+def test_system_theme_is_visible_and_persists(qt_app, tmp_path, monkeypatch):
+    window = make_window(qt_app, tmp_path, monkeypatch)
+    window.show()
+
+    window.settings_page.theme_input.setCurrentIndex(
+        window.settings_page.theme_input.findData(SYSTEM)
+    )
+
+    assert window.current_theme == SYSTEM
+    assert window.ui_state.theme() == SYSTEM
+    assert window.settings_page.theme_input.currentData() == SYSTEM
+
+    window.close()
+
+
 def test_switch_to_the_same_theme_is_a_no_op(qt_app, tmp_path, monkeypatch):
     window = make_window(qt_app, tmp_path, monkeypatch)
     window.switch_theme(DARK)
@@ -131,21 +163,67 @@ def test_switch_to_the_same_theme_is_a_no_op(qt_app, tmp_path, monkeypatch):
     window.close()
 
 
-def test_settings_page_theme_combo_applies_immediately(qt_app, tmp_path, monkeypatch):
+def test_header_theme_button_toggles_both_ways(qt_app, tmp_path, monkeypatch):
+    """کلید تم در سربرگ: نماد درست و تغییر فوری با هر کلیک."""
     window = make_window(qt_app, tmp_path, monkeypatch)
     window.show()
-    window.show_page("settings")
-    page = window.settings_page
 
-    # کمبو با تم فعلی پنجره همگام است.
-    assert page.theme_combo.currentData() == DARK
+    button = window.theme_button
 
-    # تغییر کمبو، پنجره را بلافاصله عوض می‌کند (بدون نیاز به ذخیره).
-    page.theme_combo.setCurrentIndex(page.theme_combo.findData(LIGHT))
+    # در تم تیره، ماه نشان داده می‌شود (یعنی با کلیک، روشن می‌شود).
+    assert button.text() == "🌙"
+    assert window.current_theme == DARK
+
+    button.click()
 
     assert window.current_theme == LIGHT
     assert window.ui_state.theme() == LIGHT
-    assert page.theme_combo.currentData() == LIGHT
+    assert button.text() == "☀"
+    assert LIGHT_PALETTE["window"] in window.styleSheet()
+
+    button.click()
+
+    assert window.current_theme == DARK
+    assert window.ui_state.theme() == DARK
+    assert button.text() == "🌙"
+    assert DARK_PALETTE["window"] in window.styleSheet()
+
+    window.close()
+
+
+def test_saved_light_theme_updates_header_icon_on_startup(qt_app, tmp_path, monkeypatch):
+    state = UiStateStore(tmp_path / "ui_state.json")
+    state.save_theme(LIGHT)
+    window = make_window(qt_app, tmp_path, monkeypatch, ui_state=state)
+
+    assert window.current_theme == LIGHT
+    assert window.theme_button.text() == "☀"
+
+    window.close()
+
+
+def test_header_theme_button_is_within_the_header(qt_app, tmp_path, monkeypatch):
+    """کلید تم باید در هر اندازه‌ای کامل داخل سربرگ بنشیند و روی جست‌وجو نیفتد."""
+    from app.services.ui_state import MIN_WIDTH
+
+    window = make_window(qt_app, tmp_path, monkeypatch)
+    window.show()
+
+    for width in (1200, 900, MIN_WIDTH):
+        window.resize(width, 600)
+        qt_app.processEvents()
+
+        header = window.theme_button.parentWidget()
+        top_left = window.theme_button.mapTo(header, window.theme_button.rect().topLeft())
+        button_rect = QRect(top_left, window.theme_button.size())
+        search_left = window.search_button.mapTo(
+            header, window.search_button.rect().topLeft()
+        )
+        search_rect = QRect(search_left, window.search_button.size())
+
+        assert header.rect().contains(button_rect), (width, header.rect(), button_rect)
+        assert not button_rect.intersects(search_rect), (width, button_rect, search_rect)
+        assert button_rect.width() >= 24 and button_rect.height() >= 24
 
     window.close()
 

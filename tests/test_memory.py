@@ -106,21 +106,21 @@ def test_build_messages_without_memories_keeps_system_prompt():
     assert MEMORY_HEADER not in messages[0]["content"]
 
 
-def test_service_reads_only_enabled_memories(store, monkeypatch):
+def test_service_reads_only_enabled_memories(store, tmp_path, monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
 
     enabled_id = store.add_memory("نام من مسعود است")
     disabled_id = store.add_memory("رمز عبورم ۱۲۳۴ است")
     store.set_memory_enabled(disabled_id, False)
 
-    service = ChatService(AppSettings(), store)
+    service = ChatService(AppSettings(tmp_path / "missing.env"), store)
 
     assert service.active_memories() == ["نام من مسعود است"]
     assert store.get_memory(enabled_id) is not None
 
 
-def test_service_without_store_has_no_memories():
-    assert ChatService(AppSettings()).active_memories() == []
+def test_service_without_store_has_no_memories(tmp_path):
+    assert ChatService(AppSettings(tmp_path / "missing.env")).active_memories() == []
 
 
 # ------------------------------------------------------------ صفحه رابط کاربری

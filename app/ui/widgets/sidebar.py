@@ -4,6 +4,7 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QLabel, QPushButton, QVBoxLayout, QWidget
 
 from app.services.storage import Conversation
+from app.version import APP_VERSION
 from app.ui.widgets.conversation_list import ConversationList
 
 
@@ -59,7 +60,7 @@ class Sidebar(QWidget):
         )
         layout.addWidget(self.conversations, 1)
 
-        version_label = QLabel("Version 0.1.0")
+        version_label = QLabel(f"Version {APP_VERSION}")
         version_label.setObjectName("versionLabel")
         layout.addWidget(version_label)
 

@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -65,10 +66,14 @@ from app.services.settings import (
     AppSettings,
 )
 from app.services.storage import ConversationStore
-from app.ui.theme import DARK as THEME_DARK
-from app.ui.theme import LIGHT as THEME_LIGHT
-from app.ui.theme import normalise_theme
 from app.ui.workers import ConnectionTestWorker
+from app.ui.theme import DARK, LIGHT, SYSTEM
+
+THEME_OPTIONS = (
+    ("تم سیستم", SYSTEM),
+    ("تم تیره", DARK),
+    ("تم روشن", LIGHT),
+)
 
 
 class SettingsPage(QWidget):
@@ -82,6 +87,7 @@ class SettingsPage(QWidget):
         self,
         settings: AppSettings,
         store: ConversationStore | None = None,
+        theme: str = DARK,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -91,15 +97,37 @@ class SettingsPage(QWidget):
         self._settings = settings
         self._store = store
         self._test_worker: ConnectionTestWorker | None = None
+        self._theme = theme
 
-        layout = QVBoxLayout(self)
+        # صفحه در یک QScrollArea می‌نشیند تا در پنجره‌های کوتاه، فرم و دکمه‌ها
+        # روی هم نیفتند و همه‌چیز با اسکرول در دسترس بماند.
+        content = QWidget()
+        content.setObjectName("settingsPage")
+
+        layout = QVBoxLayout(content)
         layout.setContentsMargins(32, 24, 32, 24)
         layout.setSpacing(16)
 
         layout.addWidget(self._create_heading())
         layout.addWidget(self._create_form_frame(), 1)
-        layout.addWidget(self._create_theme_row())
         layout.addWidget(self._create_data_frame())
+
+        scroll = QScrollArea()
+        scroll.setObjectName("settingsScroll")
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        # ویوپورت و ویجت محتوا شفاف می‌مانند تا پس‌زمینه صفحه دیده شود؛
+        # کادرهای داخل صفحه استایل خودشان را نگه می‌دارند.
+        scroll.setStyleSheet(
+            "QScrollArea { background: transparent; border: none; }"
+            "QScrollArea > QWidget > QWidget { background: transparent; }"
+        )
+        scroll.setWidget(content)
+
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(scroll)
 
         self.reload()
 
@@ -187,6 +215,14 @@ class SettingsPage(QWidget):
         )
         self._add_form_row(form_layout, "مدل", self.model_input)
 
+        self.theme_input = QComboBox()
+        self.theme_input.setObjectName("settingsInput")
+        self._configure_input(self.theme_input)
+        for label, value in THEME_OPTIONS:
+            self.theme_input.addItem(label, value)
+        self.theme_input.currentIndexChanged.connect(self._theme_selection_changed)
+        self._add_form_row(form_layout, "ظاهر برنامه", self.theme_input)
+
         self.base_url_input = QLineEdit()
         self.base_url_input.setObjectName("settingsInput")
         self._configure_input(self.base_url_input)
@@ -221,7 +257,7 @@ class SettingsPage(QWidget):
         self._add_form_row(form_layout, "تنوع پاسخ", self.temperature_input)
 
         # فرم نباید برای جا شدن در پنجره، فاصله ردیف‌ها را حذف یا ردیف‌ها را فشرده کند.
-        form.setMinimumHeight(6 * 44 + 5 * 14)
+        form.setMinimumHeight(7 * 44 + 6 * 14)
         frame_layout.addWidget(form)
 
         buttons = QWidget()
@@ -253,30 +289,6 @@ class SettingsPage(QWidget):
         frame_layout.addWidget(self.status_label)
 
         return frame
-
-    def _create_theme_row(self) -> QWidget:
-        """ردیف انتخاب ظاهر برنامه (تیره/روشن) با اثر فوری."""
-        row = QWidget()
-        row.setObjectName("themeRow")
-        row_layout = QHBoxLayout(row)
-        row_layout.setContentsMargins(0, 0, 0, 0)
-        row_layout.setSpacing(10)
-
-        caption = QLabel("ظاهر برنامه")
-        caption.setObjectName("panelHeading")
-        row_layout.addWidget(caption)
-
-        self.theme_combo = QComboBox()
-        self.theme_combo.setObjectName("settingsInput")
-        self.theme_combo.setFixedHeight(36)
-        self.theme_combo.addItem("تیره", THEME_DARK)
-        self.theme_combo.addItem("روشن", THEME_LIGHT)
-        self.theme_combo.setToolTip("بلافاصله اعمال و برای اجراهای بعدی ذخیره می‌شود.")
-        self.theme_combo.currentIndexChanged.connect(self._on_theme_selected)
-        row_layout.addWidget(self.theme_combo)
-        row_layout.addStretch(1)
-
-        return row
 
     def _create_data_frame(self) -> QFrame:
         """کادر پشتیبان‌گیری و بازیابی داده‌های برنامه."""
@@ -340,6 +352,7 @@ class SettingsPage(QWidget):
     def reload(self) -> None:
         """مقادیر فعلی تنظیمات را در فرم نشان می‌دهد."""
         self._settings.reload()
+        self.set_theme_selection(self._theme)
         self.api_key_input.setText(self._settings.api_key)
         self.model_input.setText(
             "" if self._settings.model == AppSettings.DEFAULT_MODEL else self._settings.model
@@ -350,30 +363,22 @@ class SettingsPage(QWidget):
         self.temperature_input.setText(
             self._non_default(self._settings.temperature, DEFAULT_TEMPERATURE)
         )
-        self.set_theme_value(self.active_theme())
         self._set_status()
         self._set_data_status()
 
-    # ------------------------------------------------------------------- ظاهر
+    def set_theme_selection(self, theme: str) -> None:
+        """گزینه تم را بدون انتشار تغییر، با وضعیت پنجره هماهنگ می‌کند."""
+        self._theme = theme
+        index = self.theme_input.findData(theme)
+        if index >= 0:
+            self.theme_input.blockSignals(True)
+            self.theme_input.setCurrentIndex(index)
+            self.theme_input.blockSignals(False)
 
-    def active_theme(self) -> str:
-        """تم فعلی برنامه؛ از پنجره اصلی می‌پرسد و پیش‌فرض تیره است."""
-        window = self.window()
-        return getattr(window, "current_theme", THEME_DARK)
-
-    def set_theme_value(self, theme: str) -> None:
-        """کمبوی تم را بدون صدور سیگنال، با مقدار داده‌شده همگام می‌کند."""
-        normalised = normalise_theme(theme)
-        index = self.theme_combo.findData(normalised)
-        if index >= 0 and index != self.theme_combo.currentIndex():
-            self.theme_combo.blockSignals(True)
-            self.theme_combo.setCurrentIndex(index)
-            self.theme_combo.blockSignals(False)
-
-    def _on_theme_selected(self) -> None:
-        """انتخاب تازه کاربر را اعلام می‌کند؛ اعمالش کار پنجره اصلی است."""
-        theme = self.theme_combo.currentData()
-        if theme:
+    def _theme_selection_changed(self, index: int) -> None:
+        theme = self.theme_input.itemData(index)
+        if theme in (DARK, LIGHT, SYSTEM):
+            self._theme = theme
             self.theme_changed.emit(theme)
 
     def _non_default(self, value: float | int, default: float | int) -> str:

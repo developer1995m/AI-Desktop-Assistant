@@ -1,11 +1,11 @@
-PySide6
-openai
-PyMuPDF
-psutil
-python-dotenv
+PySide6==6.11.2
+openai==3.14.1
+PyMuPDF==1.28.2
+psutil==7.2.2
+python-dotenv==1.2.3
 # httpx2 کتابخانه HTTP پشت openai است و برای ساخت کلاینت بدون پروکسی در سرویس‌های محلی
 # مستقیماً import می‌شود؛ پس صریح هم نام برده می‌شود.
-httpx2
-sentence-transformers
-pytest
-pyinstaller
+httpx2==2.13.0
+tzdata==2025.2
+pytest==9.1.1
+pyinstaller==6.22.3

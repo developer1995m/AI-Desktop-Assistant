@@ -4,16 +4,39 @@ from __future__ import annotations
 
 import sys
 import tempfile
+import os
+from contextlib import contextmanager
 from pathlib import Path
+from collections.abc import Iterator
 
 from PySide6.QtWidgets import QApplication
 
 from app.services import pdf_service
 from app.services.pdf_service import load_pdf
+from app.services.settings import AppSettings, KNOWN_VARIABLES
+from app.services.storage import ConversationStore
+from app.services.ui_state import UiStateStore
+from app.version import APP_NAME, APP_VERSION
 from app.ui.branding import load_app_icon
 from app.ui.main_window import MainWindow
 
 SELF_CHECK_FLAG = "--self-check"
+
+
+@contextmanager
+def _isolated_self_check_environment() -> Iterator[None]:
+    """متغیرهای تنظیمات کاربر را فقط برای طول self-check نادیده می‌گیرد."""
+    saved = {name: os.environ.get(name) for name in KNOWN_VARIABLES}
+    try:
+        for name in KNOWN_VARIABLES:
+            os.environ.pop(name, None)
+        yield
+    finally:
+        for name, value in saved.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
 
 
 def _report(message: str, *, error: bool = False) -> None:
@@ -37,25 +60,30 @@ def run_self_check(application: QApplication) -> int:
     """
     problems: list[str] = []
 
-    window = MainWindow()
-    application.processEvents()
+    with tempfile.TemporaryDirectory() as folder, _isolated_self_check_environment():
+        root = Path(folder)
+        window = MainWindow(
+            chat_store=ConversationStore(root / "data" / "assistant.db"),
+            ui_state=UiStateStore(root / "data" / "ui_state.json"),
+            settings=AppSettings(root / ".env"),
+        )
+        application.processEvents()
 
-    if window.page_stack.count() != len(window.page_indexes):
-        problems.append("همه صفحات در پنجره ساخته نشدند.")
+        if window.page_stack.count() != len(window.page_indexes):
+            problems.append("همه صفحات در پنجره ساخته نشدند.")
 
-    if window.windowIcon().isNull():
-        problems.append("آیکون برنامه بارگذاری نشد.")
+        if window.windowIcon().isNull():
+            problems.append("آیکون برنامه بارگذاری نشد.")
 
-    # بنر راه‌اندازی اولیه باید دقیقاً برعکس وضعیت کلید API دیده شود.
-    banner_visible = window.chat_page.setup_banner.isVisibleTo(window.chat_page)
-    if banner_visible == window.chat_service.is_configured():
-        problems.append("بنر راه‌اندازی اولیه با وضعیت کلید API هم‌خوان نیست.")
+        # بنر راه‌اندازی اولیه باید دقیقاً برعکس وضعیت کلید API دیده شود.
+        banner_visible = window.chat_page.setup_banner.isVisibleTo(window.chat_page)
+        if banner_visible == window.chat_service.is_configured():
+            problems.append("بنر راه‌اندازی اولیه با وضعیت کلید API هم‌خوان نیست.")
 
-    sidebar_keys = {item[0] for item in window.sidebar.NAVIGATION_ITEMS}
-    if set(window.page_indexes) != sidebar_keys:
-        problems.append("نشانی صفحات با آیتم‌های سایدبار هم‌خوان نیست.")
+        sidebar_keys = {item[0] for item in window.sidebar.NAVIGATION_ITEMS}
+        if set(window.page_indexes) != sidebar_keys:
+            problems.append("نشانی صفحات با آیتم‌های سایدبار هم‌خوان نیست.")
 
-    with tempfile.TemporaryDirectory() as folder:
         pdf_path = Path(folder) / "self-check.pdf"
         second_path = Path(folder) / "self-check-two.pdf"
 
@@ -94,8 +122,8 @@ def run_self_check(application: QApplication) -> int:
         except Exception as error:  # noqa: BLE001 - هر خطایی یعنی ساخت ناسالم است
             problems.append(f"خواندن PDF ممکن نبود: {error}")
 
-    window.close()
-    application.processEvents()
+        window.close()
+        application.processEvents()
 
     for problem in problems:
         _report(f"self-check: {problem}", error=True)
@@ -110,8 +138,9 @@ def main(argv: list[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
 
     application = QApplication.instance() or QApplication(sys.argv)
-    application.setApplicationName("AI Desktop Assistant")
-    application.setOrganizationName("AI Desktop Assistant")
+    application.setApplicationName(APP_NAME)
+    application.setApplicationVersion(APP_VERSION)
+    application.setOrganizationName(APP_NAME)
     application.setWindowIcon(load_app_icon())
 
     if SELF_CHECK_FLAG in arguments:

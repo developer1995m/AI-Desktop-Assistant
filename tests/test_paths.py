@@ -1,10 +1,23 @@
 """تست‌های مسیرهای داده برنامه و حالت خودآزمایی."""
 
+import os
 import sys
 
+import pytest
+
 import main as main_module
-from app.services import paths
+from app.services import paths, settings, storage
 from app.services.paths import APPLICATION_FOLDER, PROJECT_ROOT, database_path, env_path, user_data_dir
+
+
+@pytest.fixture
+def isolated_application_defaults(tmp_path, monkeypatch):
+    """پیش‌فرض‌های production را برای self-check به مسیر موقت می‌برد."""
+    monkeypatch.setattr(paths, "is_frozen", lambda: True)
+    monkeypatch.setenv("APPDATA", str(tmp_path / "AppData"))
+    monkeypatch.delenv("XDG_DATA_HOME", raising=False)
+    monkeypatch.setattr(storage, "DEFAULT_DATABASE_PATH", tmp_path / "assistant.db")
+    monkeypatch.setattr(settings, "DEFAULT_ENV_PATH", tmp_path / ".env")
 
 
 def test_source_run_uses_project_root(monkeypatch):
@@ -88,13 +101,28 @@ def test_storage_and_settings_defaults_follow_paths(monkeypatch, tmp_path):
     assert settings.DEFAULT_ENV_PATH == PROJECT_ROOT / ".env"
 
 
-def test_self_check_passes_on_this_environment(qt_app):
+def test_self_check_passes_on_this_environment(qt_app, isolated_application_defaults):
     """حالت خودآزمایی باید در محیط سالم با کد خروج صفر تمام شود."""
     assert main_module.run_self_check(qt_app) == 0
 
 
-def test_main_returns_zero_for_self_check(qt_app):
+def test_main_returns_zero_for_self_check(qt_app, isolated_application_defaults):
     assert main_module.main([main_module.SELF_CHECK_FLAG]) == 0
+
+
+def test_self_check_does_not_use_production_defaults(qt_app, tmp_path, monkeypatch):
+    production_database = tmp_path / "production.db"
+    production_env = tmp_path / "production.env"
+    monkeypatch.setattr(storage, "DEFAULT_DATABASE_PATH", production_database)
+    monkeypatch.setattr(settings, "DEFAULT_ENV_PATH", production_env)
+    monkeypatch.setenv("OPENAI_API_KEY", "must-be-restored")
+
+    assert main_module.run_self_check(qt_app) == 0
+    assert not production_database.exists()
+    assert not production_env.exists()
+    assert not (tmp_path / "data").exists()
+    assert not (tmp_path / "backups").exists()
+    assert os.environ["OPENAI_API_KEY"] == "must-be-restored"
 
 
 def test_report_survives_missing_console(monkeypatch):

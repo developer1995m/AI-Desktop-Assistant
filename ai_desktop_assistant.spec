@@ -5,7 +5,7 @@
 خروجی: dist\\AI Desktop Assistant\\AI Desktop Assistant.exe
 """
 
-APP_NAME = "AI Desktop Assistant"
+from app.version import APP_NAME
 
 analysis = Analysis(
     ["main.py"],
@@ -33,6 +33,7 @@ exe = EXE(
     exclude_binaries=True,
     name=APP_NAME,
     icon="assets/app_icon.ico",
+    version="version_info.txt",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

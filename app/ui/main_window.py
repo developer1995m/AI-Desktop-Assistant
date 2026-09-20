@@ -35,7 +35,7 @@ from app.ui.pages.notes_page import NotesPage
 from app.ui.pages.pdf_page import PdfPage
 from app.ui.pages.settings_page import SettingsPage
 from app.ui.pages.tasks_page import TasksPage
-from app.ui.theme import DARK, LIGHT, THEMES, stylesheet
+from app.ui.theme import DARK, LIGHT, SYSTEM, THEMES, effective_theme, stylesheet
 from app.ui.tray import ReminderTray
 from app.ui.widgets.search_dialog import SearchDialog
 from app.ui.widgets.sidebar import Sidebar
@@ -52,6 +52,7 @@ class MainWindow(QMainWindow):
         self,
         chat_store: ConversationStore | None = None,
         ui_state: UiStateStore | None = None,
+        settings: AppSettings | None = None,
     ) -> None:
         super().__init__()
 
@@ -63,7 +64,7 @@ class MainWindow(QMainWindow):
         self.ui_state = ui_state if ui_state is not None else UiStateStore()
         self._restore_window_state()
 
-        self.settings = AppSettings()
+        self.settings = settings if settings is not None else AppSettings()
         self.chat_store = chat_store if chat_store is not None else ConversationStore()
         self.last_auto_backup: Path | None = None
         self.chat_service = ChatService(self.settings, self.chat_store)
@@ -84,7 +85,11 @@ class MainWindow(QMainWindow):
         self.dashboard_page.new_chat_requested.connect(self.start_new_chat)
         self.page_indexes["dashboard"] = self.page_stack.addWidget(self.dashboard_page)
 
-        self.settings_page = SettingsPage(self.settings, self.chat_store)
+        self.settings_page = SettingsPage(
+            self.settings,
+            self.chat_store,
+            theme=self.ui_state.theme(),
+        )
         self.settings_page.saved.connect(self.chat_page.reload_configuration)
         self.settings_page.data_restored.connect(self.refresh_all_data)
         self.settings_page.theme_changed.connect(self.switch_theme)
@@ -124,6 +129,7 @@ class MainWindow(QMainWindow):
 
         self.setCentralWidget(main_widget)
         self._apply_styles()
+        QGuiApplication.styleHints().colorSchemeChanged.connect(self._system_theme_changed)
         self._create_shortcuts()
         self.refresh_conversations()
         self.show_page("dashboard")
@@ -265,14 +271,39 @@ class MainWindow(QMainWindow):
         self.search_button.setFixedHeight(32)
         self.search_button.clicked.connect(self.open_search)
 
+        # کلید تعویض ظاهر: ماه وقتی تم تیره است (پیشنهاد: برو به روشن) و
+        # خورشید وقتی روشن است. یک دکمه گرد کوچک، همان الگوی آشنای برنامه‌های
+        # دسکتاپی، با اثر فوری و ذخیره خودکار.
+        self.theme_button = QPushButton()
+        self.theme_button.setObjectName("themeToggle")
+        self.theme_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.theme_button.setFixedSize(36, 32)
+        self.theme_button.clicked.connect(self.toggle_theme)
+        self._sync_theme_button()
+
         QShortcut(QKeySequence("Ctrl+K"), self, activated=self.open_search)
 
         layout.addWidget(title_label)
         layout.addStretch(1)
         layout.addWidget(self.reminder_label)
         layout.addWidget(self.search_button)
+        layout.addWidget(self.theme_button)
 
         return header
+
+    def _sync_theme_button(self) -> None:
+        """نماد و راهنمای دکمه تم را با تم فعلی هماهنگ می‌کند."""
+        active_theme = effective_theme(getattr(self, "current_theme", DARK))
+        if active_theme == LIGHT:
+            self.theme_button.setText("☀")
+            self.theme_button.setToolTip("تم روشن فعال است؛ برای تغییر به تم تیره کلیک کنید")
+        else:
+            self.theme_button.setText("🌙")
+            self.theme_button.setToolTip("تم تیره فعال است؛ برای تغییر به تم روشن کلیک کنید")
+
+    def toggle_theme(self) -> None:
+        """بین تم تیره و روشن جابه‌جا می‌شود."""
+        self.switch_theme(LIGHT if self.current_theme == DARK else DARK)
 
     def _create_shortcuts(self) -> None:
         """میانبرهای سراسری ناوبری و کنترل گفتگو را ثبت می‌کند."""
@@ -425,6 +456,14 @@ class MainWindow(QMainWindow):
         """استایل برنامه را بر پایه تم ذخیره‌شده کاربر اعمال می‌کند."""
         self.current_theme = self.ui_state.theme()
         self.setStyleSheet(stylesheet(self.current_theme))
+        self._sync_theme_button()
+        self.settings_page.set_theme_selection(self.current_theme)
+
+    def _system_theme_changed(self) -> None:
+        """وقتی تم سیستم‌عامل عوض شد، فقط حالت سیستم را دوباره رنگ می‌کند."""
+        if self.current_theme == SYSTEM:
+            self.setStyleSheet(stylesheet(SYSTEM))
+            self._sync_theme_button()
 
     def switch_theme(self, theme: str) -> None:
         """تم را عوض می‌کند، ذخیره و بلافاصله اعمال می‌کند.
@@ -437,4 +476,6 @@ class MainWindow(QMainWindow):
         self.current_theme = theme
         self.ui_state.save_theme(theme)
         self.setStyleSheet(stylesheet(theme))
+        self._sync_theme_button()
+        self.settings_page.set_theme_selection(theme)
 

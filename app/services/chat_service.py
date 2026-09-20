@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator, Sequence
+import re
 from typing import Any
 from urllib.parse import urlparse
 
@@ -35,6 +36,21 @@ class MissingApiKeyError(ChatServiceError):
     """کلید API تنظیم نشده است و امکان ارسال درخواست وجود ندارد."""
 
 
+def _redact_sensitive_detail(detail: str) -> str:
+    """نشانه‌های رایج credential را از جزئیات خطا حذف می‌کند."""
+    patterns = (
+        (r"(?i)(authorization\s*:\s*)[^\s,;]+", r"\1[REDACTED]"),
+        (r"(?i)\bbearer\s+[^\s,;]+", "Bearer [REDACTED]"),
+        (r"(?i)\bsk-[A-Za-z0-9_-]+", "[REDACTED_API_KEY]"),
+        (r"(?i)(OPENAI_API_KEY\s*[=:]\s*)[^\s,;]+", r"\1[REDACTED]"),
+        (r"(?i)(api[_ -]?key\s*[=:]\s*)[^\s,;]+", r"\1[REDACTED]"),
+    )
+    redacted = detail
+    for pattern, replacement in patterns:
+        redacted = re.sub(pattern, replacement, redacted)
+    return redacted
+
+
 def describe_error(error: BaseException) -> str:
     """خطای ارتباط با سرویس را به پیام فارسی قابل‌فهم تبدیل می‌کند.
 
@@ -42,13 +58,10 @@ def describe_error(error: BaseException) -> str:
     هر نسخه‌ای از کلاینت سازگار با OpenAI و با کلاینت‌های آزمایشی هم درست کار می‌کند.
     """
     if isinstance(error, ChatServiceError):
-        return str(error)
+        return _redact_sensitive_detail(str(error))
 
     name = type(error).__name__
     status = getattr(error, "status_code", None)
-    detail = str(error).strip()
-    suffix = f" ({detail})" if detail else ""
-
     if status in {401, 403} or "Authentication" in name or "PermissionDenied" in name:
         return "کلید API پذیرفته نشد؛ مقدار OPENAI_API_KEY را در صفحه تنظیمات بررسی کنید."
     if status == 404 or "NotFound" in name:
@@ -66,9 +79,9 @@ def describe_error(error: BaseException) -> str:
     if "Connection" in name or isinstance(error, (OSError, TimeoutError)):
         return "اتصال به اینترنت یا سرویس برقرار نشد؛ اتصال شبکه را بررسی کنید."
     if status == 400 or "BadRequest" in name:
-        return f"درخواست پذیرفته نشد؛ تنظیمات مدل را بررسی کنید.{suffix}"
+        return "درخواست پذیرفته نشد؛ تنظیمات مدل را بررسی کنید."
 
-    return f"خطای پیش‌بینی‌نشده در ارتباط با مدل: {name}{suffix}"
+    return f"خطای پیش‌بینی‌نشده در ارتباط با مدل: {name}"
 
 
 def is_local_base_url(base_url: str) -> bool:

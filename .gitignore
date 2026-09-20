@@ -20,12 +20,22 @@ dist/
 data/*.db
 data/*.sqlite3
 data/ui_state.json
+data/*.json
 data/backups/
 backups/
+logs/
+*.log
 
 # Freebuff workspace metadata
 .freebuff/
 
+# Generated review screenshots and theme comparison page
+screenshots/
+_review.html
+
 # IDE files
 .vscode/
 .idea/
+
+# Installer build output
+installer/

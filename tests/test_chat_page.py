@@ -110,7 +110,7 @@ def test_page_shows_error_bubble_for_api_failure(qt_app, tmp_path, monkeypatch, 
 
     assert wait_for(lambda: not page.is_busy)
     texts = bubble_texts(page)
-    assert "boom" in texts[1]
+    assert "خطای پیش‌بینی‌نشده در ارتباط با مدل: RuntimeError" in texts[1]
     error_bubbles = [
         bubble for bubble in page.findChildren(MessageBubble) if bubble.objectName() == "errorBubble"
     ]
