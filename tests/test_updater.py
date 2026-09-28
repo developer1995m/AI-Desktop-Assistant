@@ -6,6 +6,7 @@ import io
 import hashlib
 import json
 import urllib.error
+from pathlib import Path
 
 import pytest
 
@@ -135,7 +136,7 @@ def test_get_latest_release_translates_github_http_errors(monkeypatch):
 
     monkeypatch.setattr(updater.urllib.request, "urlopen", fail_urlopen)
 
-    with pytest.raises(updater.UpdateError, match="HTTP 404"):
+    with pytest.raises(updater.UpdateError, match="Release عمومی.*مخزن خصوصی"):
         updater.get_latest_release()
 
 
@@ -212,3 +213,40 @@ def test_download_update_removes_files_when_digest_is_invalid(monkeypatch, tmp_p
     assert not list(tmp_path.rglob("*.zip"))
     assert not list(tmp_path.rglob("*.exe"))
     assert not list(tmp_path.rglob("*.part"))
+
+
+def test_launch_updater_targets_the_drive_of_the_installed_application(
+    monkeypatch, tmp_path
+):
+    update = make_update(b"bundle", b"updater")
+    bundle_path = tmp_path / "bundle.zip"
+    updater_path = tmp_path / "updater.exe"
+    bundle_path.write_bytes(b"bundle")
+    updater_path.write_bytes(b"updater")
+    downloaded = updater.DownloadedUpdate(bundle_path, updater_path)
+    installed_executable = Path(r"F:\AI Desktop Assistant\AI Desktop Assistant.exe")
+    launched = {}
+    original_is_file = Path.is_file
+
+    monkeypatch.setattr(updater.sys, "platform", "win32")
+    monkeypatch.setattr(updater.sys, "executable", str(installed_executable))
+    monkeypatch.setattr(updater, "is_frozen", lambda: True)
+
+    def is_file(path):
+        if path == installed_executable:
+            return True
+        return original_is_file(path)
+
+    def fake_popen(arguments, **kwargs):
+        launched["arguments"] = arguments
+        launched["kwargs"] = kwargs
+
+    monkeypatch.setattr(Path, "is_file", is_file)
+    monkeypatch.setattr(updater.subprocess, "Popen", fake_popen)
+
+    updater.launch_updater(update, downloaded)
+
+    arguments = launched["arguments"]
+    target_index = arguments.index("--target")
+    assert arguments[target_index + 1] == str(installed_executable.resolve().parent)
+    assert arguments[target_index + 1].startswith("F:")

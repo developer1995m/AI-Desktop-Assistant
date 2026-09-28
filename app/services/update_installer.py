@@ -149,7 +149,11 @@ def apply_update(
     if requested_target.is_symlink() or requested_target.is_junction():
         raise UpdateInstallError("مسیر نصب نمی‌تواند پیوند نمادین باشد.")
     target = requested_target.resolve()
-    if not target.is_dir() or target.name != "AI Desktop Assistant":
+    if (
+        not target.is_dir()
+        or not (target / APP_EXECUTABLE_NAME).is_file()
+        or not (target / "_internal").is_dir()
+    ):
         raise UpdateInstallError("پوشه نصب برنامه معتبر نیست.")
     if not archive_path.is_file():
         raise UpdateInstallError("فایل bundle پیدا نشد.")
@@ -168,6 +172,16 @@ def apply_update(
         _extract_bundle(archive_path, stage_dir)
         if backup_dir.exists() or failed_dir.exists():
             raise UpdateInstallError("پوشه موقت updater از اجرای قبلی باقی مانده است.")
+
+        for existing_file in target.iterdir():
+            name = existing_file.name.lower()
+            if (
+                existing_file.is_file()
+                and not existing_file.is_symlink()
+                and name.startswith("unins")
+                and existing_file.suffix.lower() in {".exe", ".dat"}
+            ):
+                shutil.copy2(existing_file, stage_dir / existing_file.name)
 
         os.replace(target, backup_dir)
         try:

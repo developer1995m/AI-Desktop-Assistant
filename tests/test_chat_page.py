@@ -5,6 +5,7 @@ import gc
 import pytest
 from PySide6.QtCore import QEvent, QPoint, Qt
 from PySide6.QtGui import QGuiApplication, QKeyEvent
+from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from app.services.chat_service import MAX_HISTORY_MESSAGES, ChatService
 from app.services.settings import AppSettings
@@ -536,6 +537,27 @@ def test_setup_banner_does_not_collide_with_the_transcript(qt_app, tmp_path, mon
     hint = button.sizeHint()
     assert button.width() >= hint.width()
     assert button.mapTo(banner, QPoint(0, 0)).x() + button.width() <= banner.width()
+
+
+def test_chat_heading_reflows_at_compact_width(qt_app, tmp_path, monkeypatch):
+    page, _ = make_page_with_settings(
+        qt_app, tmp_path, monkeypatch, "OPENAI_API_KEY=test-key\n"
+    )
+    page.resize(440, 620)
+    page.show()
+    qt_app.processEvents()
+
+    toolbar = page.findChild(QWidget, "chatToolbar")
+    title = next(
+        label
+        for label in toolbar.findChildren(QLabel)
+        if label.text() == "گفتگو با هوش مصنوعی"
+    )
+
+    assert isinstance(toolbar.layout(), QVBoxLayout)
+    assert title.wordWrap()
+    assert title.height() >= title.fontMetrics().height()
+    assert title.geometry().right() <= toolbar.rect().right()
 
 
 def test_setup_button_asks_for_the_settings_page(qt_app, tmp_path, monkeypatch):

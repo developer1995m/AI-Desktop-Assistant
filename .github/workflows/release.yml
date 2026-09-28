@@ -44,6 +44,26 @@ jobs:
       - name: Self-check packaged application
         run: "& 'dist/AI Desktop Assistant/AI Desktop Assistant.exe' --self-check"
 
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --yes --no-progress
+
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          $version = $env:GITHUB_REF_NAME.TrimStart('v')
+          if (-not (Test-Path $iscc)) {
+            throw "Inno Setup compiler was not found at $iscc"
+          }
+          & $iscc "/DMyAppVersion=$version" /Qp installer.iss
+          if ($LASTEXITCODE -ne 0) {
+            throw "Inno Setup compiler failed with exit code $LASTEXITCODE"
+          }
+          if (-not (Test-Path 'installer/AI-Desktop-Assistant-Setup.exe')) {
+            throw "The Windows installer was not created"
+          }
+
       - name: Build standalone updater
         run: python -m PyInstaller --noconfirm --clean updater.spec
 
@@ -66,5 +86,6 @@ jobs:
           gh release create $env:GITHUB_REF_NAME `
             'release/AI-Desktop-Assistant-Windows-x64.zip' `
             'release/AI-Desktop-Assistant-Updater.exe' `
+            'installer/AI-Desktop-Assistant-Setup.exe' `
             --title "AI Desktop Assistant $env:GITHUB_REF_NAME" `
             --generate-notes

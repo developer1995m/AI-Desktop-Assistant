@@ -54,6 +54,7 @@ class StatCard(QFrame):
 
         title_label = QLabel(title)
         title_label.setObjectName("statTitle")
+        title_label.setWordWrap(True)
         layout.addWidget(title_label)
 
     def set_value(self, value: int) -> None:
@@ -74,7 +75,10 @@ class DashboardPage(QWidget):
 
         self._store = store
 
-        page_layout = QVBoxLayout(self)
+        content = QWidget()
+        content.setObjectName("dashboardContent")
+
+        page_layout = QVBoxLayout(content)
         page_layout.setContentsMargins(32, 24, 32, 24)
         page_layout.setSpacing(16)
 
@@ -83,6 +87,17 @@ class DashboardPage(QWidget):
 
         self.recent_frame = self._create_recent_frame()
         page_layout.addWidget(self.recent_frame, 1)
+
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setObjectName("dashboardScroll")
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll_area.setWidget(content)
+
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        outer_layout.addWidget(self.scroll_area)
 
         self.refresh()
 
@@ -114,17 +129,22 @@ class DashboardPage(QWidget):
         """ردیف کارت‌های آماری را می‌سازد."""
         container = QWidget()
 
-        layout = QHBoxLayout(container)
+        layout = QGridLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(14)
+        layout.setHorizontalSpacing(14)
+        layout.setVerticalSpacing(10)
 
         self.chats_card = StatCard("گفتگوهای ذخیره‌شده", "statCardChats")
         self.messages_card = StatCard("کل پیام‌ها", "statCardMessages")
         self.sent_card = StatCard("پیام‌های شما", "statCardSent")
         self.replies_card = StatCard("پاسخ‌های دستیار", "statCardReplies")
 
-        for card in (self.chats_card, self.messages_card, self.sent_card, self.replies_card):
-            layout.addWidget(card, 1)
+        cards = (self.chats_card, self.messages_card, self.sent_card, self.replies_card)
+        for index, card in enumerate(cards):
+            layout.addWidget(card, index // 2, index % 2)
+
+        layout.setColumnStretch(0, 1)
+        layout.setColumnStretch(1, 1)
 
         return container
 
@@ -224,9 +244,11 @@ class DashboardPage(QWidget):
         title_label = QLabel(conversation.title)
         title_label.setObjectName("recentRowTitle")
         title_label.setToolTip(conversation.title)
+        title_label.setWordWrap(True)
 
         preview_label = QLabel(preview_text(self._store.last_message(conversation.id)))
         preview_label.setObjectName("recentRowPreview")
+        preview_label.setWordWrap(True)
 
         text_layout.addWidget(title_label)
         text_layout.addWidget(preview_label)

@@ -8,6 +8,7 @@ from collections.abc import Sequence
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
+    QDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -256,42 +257,44 @@ class MemoryPage(QWidget):
         if memory is None:
             return
 
-        answer = QMessageBox(self)
-        answer.setWindowTitle("ویرایش حافظه")
-        answer.setModal(True)
+        dialog = QDialog(self)
+        dialog.setWindowTitle("ویرایش حافظه")
+        dialog.setModal(True)
+        dialog.setMinimumWidth(420)
+
+        box_layout = QVBoxLayout(dialog)
+        box_layout.addWidget(QLabel("متن واقعیت:"))
 
         edit_input = QLineEdit(memory.content)
+        edit_input.setObjectName("memoryEditInput")
         edit_input.setMaxLength(MAX_MEMORY_CHARS)
-        save_button = QPushButton("ذخیره")
-        cancel_button = QPushButton("انصراف")
-        save_button.setDefault(True)
+        box_layout.addWidget(edit_input)
 
         buttons_layout = QHBoxLayout()
         buttons_layout.addStretch(1)
+
+        save_button = QPushButton("ذخیره")
+        save_button.setObjectName("memoryEditSaveButton")
+        cancel_button = QPushButton("انصراف")
+        cancel_button.setObjectName("memoryEditCancelButton")
+        save_button.setDefault(True)
         buttons_layout.addWidget(cancel_button)
         buttons_layout.addWidget(save_button)
-
-        box_layout = QVBoxLayout(answer)
-        box_layout.addWidget(QLabel("متن واقعیت:"))
-        box_layout.addWidget(edit_input)
         box_layout.addLayout(buttons_layout)
 
-        confirmed: list[bool] = []
+        save_button.clicked.connect(dialog.accept)
+        cancel_button.clicked.connect(dialog.reject)
+        edit_input.returnPressed.connect(save_button.click)
 
-        def _on_save() -> None:
-            confirmed.append(True)
-            answer.accept()
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
 
-        save_button.clicked.connect(_on_save)
-        cancel_button.clicked.connect(answer.reject)
-
-        answer.exec()
-
-        if not confirmed or edit_input.text().strip() == memory.content:
+        content = edit_input.text().strip()
+        if content == memory.content:
             return
 
         try:
-            self._store.update_memory(memory_id, edit_input.text())
+            self._store.update_memory(memory_id, content)
         except (sqlite3.Error, ValueError) as error:
             self.empty_label.setText(f"ذخیره حافظه ناموفق بود: {error}")
             self.empty_label.setVisible(True)

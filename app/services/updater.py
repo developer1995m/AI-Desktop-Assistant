@@ -154,6 +154,11 @@ def _request_json(url: str) -> dict:
         with urllib.request.urlopen(request, timeout=_HTTP_TIMEOUT) as response:
             payload = response.read()
     except urllib.error.HTTPError as error:
+        if error.code == 404:
+            raise UpdateError(
+                "Release عمومی در GitHub پیدا نشد. اگر مخزن خصوصی است، برنامه بدون "
+                "احراز هویت به Release دسترسی ندارد؛ مخزن یا سرویس انتشار باید عمومی باشد."
+            ) from error
         raise UpdateError(
             f"GitHub API خطای HTTP {error.code} برگرداند."
         ) from error

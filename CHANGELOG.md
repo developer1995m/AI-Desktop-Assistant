@@ -2,6 +2,24 @@
 
 All notable changes for this project are documented here.
 
+## [0.1.2] - 2026-09-28
+
+### Added
+
+- GitHub Windows releases now include an Inno Setup installer with a location and shortcut wizard.
+
+### Fixed
+
+- Memory editing uses a dedicated dialog with working save and cancel actions.
+- Help and Settings text now use readable colors in dark mode.
+- Chat and Dashboard layouts remain accessible in smaller windows.
+- The updater supports custom installation folders and preserves Inno Setup uninstall files.
+- Update-check failures explain when a private GitHub repository blocks anonymous access.
+
+### Testing
+
+- Full test suite passes, including Windows installation-path and updater regression tests.
+
 ## [0.1.1] - Current Release
 
 ### Added

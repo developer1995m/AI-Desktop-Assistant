@@ -102,13 +102,19 @@ class ChatPage(QWidget):
     def _create_toolbar(self) -> QWidget:
         """نوار بالای صفحه شامل عنوان، مدل فعال و دکمه پاک‌کردن گفتگو."""
         toolbar = QWidget()
+        toolbar.setObjectName("chatToolbar")
 
-        layout = QHBoxLayout(toolbar)
+        layout = QVBoxLayout(toolbar)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(12)
+        layout.setSpacing(8)
+
+        title_row = QHBoxLayout()
+        title_row.setContentsMargins(0, 0, 0, 0)
+        title_row.setSpacing(12)
 
         title_label = QLabel("گفتگو با هوش مصنوعی")
         title_label.setObjectName("pageTitle")
+        title_label.setWordWrap(True)
 
         self.model_label = QLabel()
         self.model_label.setObjectName("modelChip")
@@ -126,12 +132,18 @@ class ChatPage(QWidget):
         self.export_button.setToolTip("ذخیره این گفتگو در یک فایل Markdown")
         self.export_button.clicked.connect(self.export_markdown)
 
-        layout.addWidget(title_label)
-        layout.addWidget(self.model_label)
-        layout.addWidget(self.memory_label)
-        layout.addStretch(1)
-        layout.addWidget(self.export_button)
-        layout.addWidget(self.clear_button)
+        title_row.addWidget(title_label, 1)
+        title_row.addWidget(self.model_label)
+        title_row.addWidget(self.memory_label)
+        layout.addLayout(title_row)
+
+        actions_row = QHBoxLayout()
+        actions_row.setContentsMargins(0, 0, 0, 0)
+        actions_row.setSpacing(10)
+        actions_row.addStretch(1)
+        actions_row.addWidget(self.export_button)
+        actions_row.addWidget(self.clear_button)
+        layout.addLayout(actions_row)
 
         return toolbar
 

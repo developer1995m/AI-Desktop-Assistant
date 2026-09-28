@@ -1,7 +1,8 @@
 """تست‌های حافظه: ذخیره‌سازی، تزریق در پرامپت و صفحه رابط کاربری."""
 
 import pytest
-from PySide6.QtWidgets import QCheckBox, QLabel
+from PySide6.QtCore import QTimer
+from PySide6.QtWidgets import QCheckBox, QDialog, QLabel, QLineEdit, QPushButton
 
 from app.services.chat_service import MEMORY_HEADER, ChatService, build_messages
 from app.services.settings import AppSettings
@@ -241,5 +242,48 @@ def test_memory_page_delete_requires_confirmation(qt_app, store, monkeypatch):
         )
         page._delete_memory(memory_id)
         assert store.count_memories() == 0
+    finally:
+        page.deleteLater()
+
+
+def test_memory_page_edit_saves_changes_from_dialog(qt_app, store):
+    memory_id = store.add_memory("نام من مسعود است")
+    page = MemoryPage(store)
+    changes: list[bool] = []
+    page.memories_changed.connect(lambda: changes.append(True))
+
+    def save_edit():
+        dialog = qt_app.activeModalWidget()
+        assert isinstance(dialog, QDialog)
+        dialog.findChild(QLineEdit, "memoryEditInput").setText("نام من سارا است")
+        dialog.findChild(QPushButton, "memoryEditSaveButton").click()
+
+    try:
+        QTimer.singleShot(0, save_edit)
+        page._edit_memory(memory_id)
+
+        assert store.get_memory(memory_id).content == "نام من سارا است"
+        assert _row_texts(page) == ["نام من سارا است"]
+        assert changes == [True]
+    finally:
+        page.deleteLater()
+
+
+def test_memory_page_edit_cancel_keeps_original_value(qt_app, store):
+    memory_id = store.add_memory("نام من مسعود است")
+    page = MemoryPage(store)
+
+    def cancel_edit():
+        dialog = qt_app.activeModalWidget()
+        assert isinstance(dialog, QDialog)
+        dialog.findChild(QLineEdit, "memoryEditInput").setText("متن موقت")
+        dialog.findChild(QPushButton, "memoryEditCancelButton").click()
+
+    try:
+        QTimer.singleShot(0, cancel_edit)
+        page._edit_memory(memory_id)
+
+        assert store.get_memory(memory_id).content == "نام من مسعود است"
+        assert _row_texts(page) == ["نام من مسعود است"]
     finally:
         page.deleteLater()

@@ -2,11 +2,10 @@
 
 A modular Windows desktop assistant built with Python and PySide6.
 
-Current release: **0.1.1**
+Current release: **0.1.2**
 
-Release status: **Published-ready**. Automated tests, packaged self-check, Windows installer
-build, and the recent voice and PDF fallback improvements have been validated in the project
-workspace. The GitHub and Windows release artifacts should be generated from this version.
+The `v0.1.2` GitHub release provides a portable ZIP, the updater executable, and a Windows
+Setup installer with the standard location and shortcut wizard.
 
 ## Core features
 
@@ -76,14 +75,17 @@ memories. Backups are local files and are not encrypted by this application.
 
 ## Release files
 
-The authoritative application version is `0.1.0`. See [CHANGELOG.md](CHANGELOG.md) for the
+The authoritative application version is `0.1.2`. See [CHANGELOG.md](CHANGELOG.md) for the
 current release summary. Optional semantic PDF retrieval is installed separately with
 `requirements-embeddings.txt`; without it, multilingual lexical retrieval remains available.
 
-Packaged Windows builds can check for updates from Settings. A GitHub Release must include
-`AI-Desktop-Assistant-Windows-x64.zip` (the complete PyInstaller onedir folder) and
-`AI-Desktop-Assistant-Updater.exe`. GitHub's asset API SHA-256 digests are required for both
-files. The updater replaces the application bundle only; user data remains under `%APPDATA%`.
+The Windows ZIP is portable: extract it and run `AI Desktop Assistant.exe`; it does not show an
+installation wizard. The Setup installer is the option for selecting an installation location,
+creating shortcuts, and adding the app to Windows' installed-app list. Releases include
+`AI-Desktop-Assistant-Setup.exe`, `AI-Desktop-Assistant-Windows-x64.zip` (the complete
+PyInstaller onedir folder), and `AI-Desktop-Assistant-Updater.exe`. GitHub's asset API
+SHA-256 digests are required for the ZIP and updater. The updater replaces the application
+bundle only; user data remains under `%APPDATA%`.
 
 ## First run and network behaviour
 
@@ -125,8 +127,9 @@ build.bat
 
 The script runs the tests, packages the app with PyInstaller and verifies the result. It also
 builds the standalone updater and creates the complete update assets under `release\`:
-`AI-Desktop-Assistant-Windows-x64.zip` and `AI-Desktop-Assistant-Updater.exe`. To package the
-application manually:
+`AI-Desktop-Assistant-Windows-x64.zip` and `AI-Desktop-Assistant-Updater.exe`. If Inno Setup is
+installed, it also creates `installer\AI-Desktop-Assistant-Setup.exe`; this is the Windows
+installer with the location and shortcut wizard. To package the application manually:
 
 ```bash
 .venv\Scripts\python.exe -m PyInstaller --noconfirm --clean ai_desktop_assistant.spec
@@ -137,7 +140,8 @@ without showing any UI; it is what verifies a packaged build (and works in CI).
 
 To publish an update, set `APP_VERSION` in `app/version.py`, commit the change, then push a
 matching `v<version>` tag (for example, `v0.2.0`). The Windows Release workflow runs tests,
-builds both executables, packages the full onedir bundle and publishes the two required assets.
+builds the app and updater, creates the full onedir bundle and Setup installer, then publishes
+all three assets.
 The updater check and install action are available only in the frozen Windows application.
 
 When the app runs from a bundle, the folder next to the executable may be read-only, so the

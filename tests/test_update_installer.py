@@ -21,8 +21,8 @@ def make_bundle(path, *, executable=b"new exe", internal=b"new dependency"):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def make_target(tmp_path):
-    target = tmp_path / "AI Desktop Assistant"
+def make_target(tmp_path, folder_name="AI Desktop Assistant"):
+    target = tmp_path / folder_name
     (target / "_internal").mkdir(parents=True)
     (target / APP_EXECUTABLE_NAME).write_bytes(b"old exe")
     (target / "_internal/old.dll").write_bytes(b"old dependency")
@@ -40,6 +40,32 @@ def test_apply_update_replaces_the_entire_bundle(tmp_path):
     assert (target / "_internal/new.dll").read_bytes() == b"new dependency"
     assert not (target / "_internal/old.dll").exists()
     assert not list(tmp_path.glob(".*.backup-*"))
+
+
+def test_apply_update_supports_a_custom_install_folder_name(tmp_path):
+    target = make_target(tmp_path, "Assistant on F")
+    archive_path = tmp_path / "bundle.zip"
+    expected_digest = make_bundle(archive_path)
+
+    apply_update(archive_path, target, expected_digest)
+
+    assert (target / APP_EXECUTABLE_NAME).read_bytes() == b"new exe"
+    assert (target / "_internal/new.dll").read_bytes() == b"new dependency"
+
+
+def test_apply_update_preserves_inno_setup_uninstaller_files(tmp_path):
+    target = make_target(tmp_path)
+    uninstaller = target / "unins000.exe"
+    uninstall_data = target / "unins000.dat"
+    uninstaller.write_bytes(b"setup uninstaller")
+    uninstall_data.write_bytes(b"setup uninstall data")
+    archive_path = tmp_path / "bundle.zip"
+    expected_digest = make_bundle(archive_path)
+
+    apply_update(archive_path, target, expected_digest)
+
+    assert uninstaller.read_bytes() == b"setup uninstaller"
+    assert uninstall_data.read_bytes() == b"setup uninstall data"
 
 
 def test_apply_update_rejects_path_traversal_without_touching_install(tmp_path):

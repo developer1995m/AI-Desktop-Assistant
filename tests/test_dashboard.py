@@ -1,6 +1,6 @@
 """تست‌های صفحه داشبورد."""
 
-from PySide6.QtWidgets import QPushButton
+from PySide6.QtWidgets import QGridLayout, QPushButton
 
 from app.services.chat_service import ChatService
 from app.services.storage import ConversationStore
@@ -75,6 +75,41 @@ def test_dashboard_shows_empty_state(qt_app, tmp_path):
     assert len(dashboard._rows) == 1
     assert dashboard.empty_label.isHidden() is True
     assert len(open_buttons_of(dashboard)) == 1
+
+
+def test_dashboard_stat_cards_reflow_into_two_columns(qt_app, tmp_path):
+    store, dashboard = make_dashboard(tmp_path)
+    dashboard.resize(520, 360)
+    dashboard.show()
+    qt_app.processEvents()
+
+    grid = dashboard.findChild(QGridLayout)
+    assert grid is not None
+    assert grid.getItemPosition(grid.indexOf(dashboard.chats_card))[:2] == (0, 0)
+    assert grid.getItemPosition(grid.indexOf(dashboard.messages_card))[:2] == (0, 1)
+    assert grid.getItemPosition(grid.indexOf(dashboard.sent_card))[:2] == (1, 0)
+    assert grid.getItemPosition(grid.indexOf(dashboard.replies_card))[:2] == (1, 1)
+    assert all(
+        label.wordWrap()
+        for card in (
+            dashboard.chats_card,
+            dashboard.messages_card,
+            dashboard.sent_card,
+            dashboard.replies_card,
+        )
+        for label in card.findChildren(type(dashboard.empty_label))
+        if label.objectName() == "statTitle"
+    )
+    assert dashboard.scroll_area.widgetResizable()
+    assert dashboard.scroll_area.verticalScrollBar().maximum() > 0
+    dashboard.scroll_area.verticalScrollBar().setValue(
+        dashboard.scroll_area.verticalScrollBar().maximum()
+    )
+    qt_app.processEvents()
+    assert dashboard.recent_frame.isVisible()
+
+    dashboard.close()
+    store.close()
 
 
 def test_dashboard_lists_recent_conversations_with_preview(qt_app, tmp_path):

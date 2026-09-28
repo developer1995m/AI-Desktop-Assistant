@@ -2,6 +2,7 @@
 
 import pytest
 from PySide6.QtCore import QRect
+from PySide6.QtWidgets import QLabel
 
 from app.services.ui_state import UiStateStore
 from app.ui.theme import (
@@ -16,6 +17,7 @@ from app.ui.theme import (
     palette,
     stylesheet,
 )
+from app.ui.pages.help_page import HelpPage
 
 from tests.test_main_window import make_window
 
@@ -87,6 +89,32 @@ def test_palette_rejects_unknown_theme():
 def test_system_theme_is_a_supported_preference():
     assert SYSTEM in THEMES
     assert stylesheet(SYSTEM)
+
+
+def test_help_page_scroll_uses_theme_background(qt_app):
+    page = HelpPage()
+    page.setStyleSheet(stylesheet(DARK))
+    scroll = page.tabs.widget(0)
+
+    assert not scroll.viewport().autoFillBackground()
+    assert "background: transparent" in scroll.styleSheet()
+    assert f"background-color: {DARK_PALETTE['window']}" in page.styleSheet()
+
+
+def test_settings_field_labels_follow_the_selected_theme(qt_app, tmp_path, monkeypatch):
+    window = make_window(qt_app, tmp_path, monkeypatch)
+    labels = window.settings_page.findChildren(QLabel, "settingsFieldLabel")
+
+    assert len(labels) == 7
+
+    for theme, colors in ((DARK, DARK_PALETTE), (LIGHT, LIGHT_PALETTE)):
+        window.switch_theme(theme)
+        assert (
+            f"#settingsFieldLabel {{\n                color: {colors['textPrimary']};"
+            in window.styleSheet()
+        )
+
+    window.close()
 
 
 # ------------------------------------------------------------ ذخیره وضعیت تم

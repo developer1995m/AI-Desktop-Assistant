@@ -172,6 +172,7 @@ class SettingsPage(QWidget):
         row_layout.setSpacing(14)
 
         label = QLabel(label_text)
+        label.setObjectName("settingsFieldLabel")
         label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         label.setMinimumWidth(72)
 
