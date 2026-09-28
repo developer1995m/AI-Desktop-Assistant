@@ -2,7 +2,24 @@
 
 All notable changes for this project are documented here.
 
-## [0.1.0] - Current Release
+## [0.1.1] - Current Release
+
+### Added
+
+- Voice-to-text transcription for selected audio files in both chat and PDF pages.
+- Clear validation for unsupported audio formats before a transcription request is sent.
+- Offline local PDF search fallback when the AI backend is unavailable, while preserving the missing API-key error in the correct order.
+
+### Changed
+
+- The PDF assistant now keeps the explicit missing-key message ahead of any fallback response.
+- Release metadata and packaging version were updated to match the latest feature set.
+
+### Testing
+
+- End-to-end validation for chat and PDF UI flows, plus the full automated project suite.
+
+## [0.1.0]
 
 ### Added
 

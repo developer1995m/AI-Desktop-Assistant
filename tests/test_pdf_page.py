@@ -7,6 +7,7 @@ from app.services.chat_service import ChatService
 from app.services.settings import AppSettings
 from app.services.storage import ConversationStore
 from app.services.ui_state import UiStateStore
+from app.services.voice_service import VoiceService
 from app.ui import main_window as main_window_module
 from app.ui.main_window import MainWindow
 from app.ui.pages.pdf_page import ALREADY_OPEN_STATUS, NO_DOCUMENT_STATUS, PdfPage
@@ -180,6 +181,26 @@ def test_page_reports_missing_api_key(qt_app, tmp_path, monkeypatch, wait_for):
         assert "OPENAI_API_KEY" in bubble_texts(page)[-1]
         # سؤال ناموفق در تاریخچه نمی‌ماند تا پرسیدن دوباره تمیز باشد.
         assert page.question_count == 0
+    finally:
+        page.deleteLater()
+
+
+def test_page_can_transcribe_selected_audio_into_question_input(qt_app, tmp_path, monkeypatch):
+    page = make_page(qt_app, tmp_path, monkeypatch)
+    path = make_pdf(tmp_path / "doc.pdf", ["Some text"])
+
+    try:
+        assert page.load_document(str(path)) is True
+        monkeypatch.setattr(
+            "app.ui.pages.pdf_page.QFileDialog.getOpenFileName",
+            lambda *args, **kwargs: ("/tmp/voice.wav", "Audio Files (*.wav *.mp3 *.m4a)"),
+        )
+        monkeypatch.setattr(VoiceService, "transcribe_file", lambda self, file_path: "متن تشخیص داده‌شده")
+
+        page.voice_button.click()
+
+        assert page.chat_input.toPlainText() == "متن تشخیص داده‌شده"
+        assert "صدا" in page.status_label.text()
     finally:
         page.deleteLater()
 

@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 
 from app.services.chat_service import MAX_HISTORY_MESSAGES, ChatService
 from app.services.storage import ConversationStore
+from app.services.voice_service import VoiceService
 from app.ui.widgets.chat_bubble import MessageBubble
 from app.ui.widgets.chat_input import ChatInput
 from app.ui.workers import ChatStreamWorker
@@ -212,12 +213,19 @@ class ChatPage(QWidget):
         self.chat_input = ChatInput()
         self.chat_input.send_requested.connect(self._submit_from_input)
 
+        self.voice_button = QPushButton("🎙️")
+        self.voice_button.setObjectName("ghostButton")
+        self.voice_button.setFixedSize(44, 44)
+        self.voice_button.setToolTip("انتخاب فایل صوتی و تبدیل آن به متن")
+        self.voice_button.clicked.connect(self._handle_voice_input)
+
         self.send_button = QPushButton("ارسال")
         self.send_button.setObjectName("primaryButton")
         self.send_button.setFixedHeight(44)
         self.send_button.clicked.connect(self._handle_primary_clicked)
 
         layout.addWidget(self.chat_input, 1)
+        layout.addWidget(self.voice_button, 0, Qt.AlignmentFlag.AlignBottom)
         layout.addWidget(self.send_button, 0, Qt.AlignmentFlag.AlignBottom)
 
         return composer
@@ -373,6 +381,42 @@ class ChatPage(QWidget):
             return
 
         self._send(self.chat_input.take_text())
+
+    def _handle_voice_input(self) -> None:
+        """یک فایل صوتی انتخاب می‌کند و آن را به متن تبدیل می‌کند."""
+        if self._is_busy:
+            return
+
+        path, _filter = QFileDialog.getOpenFileName(
+            self,
+            "انتخاب فایل صوتی",
+            "",
+            "Audio Files (*.wav *.mp3 *.m4a *.aac *.ogg *.flac);;All Files (*.*)",
+        )
+
+        if not path:
+            return
+
+        file_suffix = Path(path).suffix.lower()
+        supported = {".wav", ".mp3", ".m4a", ".aac", ".ogg", ".flac"}
+        if file_suffix not in supported:
+            self._set_status("فقط فایل‌های صوتی با فرمت wav، mp3، m4a، aac، ogg و flac پشتیبانی می‌شوند.")
+            return
+
+        try:
+            voice_service = VoiceService(self._service._settings)
+            transcript = voice_service.transcribe_file(path)
+        except Exception as error:  # noqa: BLE001 - نشان دادن پیام کاربر مهم‌تر از نوع خطا است.
+            self._set_status(str(error))
+            return
+
+        current = self.chat_input.toPlainText().strip()
+        if current:
+            self.chat_input.setPlainText(f"{current}\n{transcript}")
+        else:
+            self.chat_input.setPlainText(transcript)
+
+        self._set_status("متن صدا به ورودی گفتگو اضافه شد.")
 
     def _send(self, text: str) -> None:
         """پیام کاربر را نمایش می‌دهد و پاسخ مدل را به‌صورت جریانی دریافت می‌کند."""

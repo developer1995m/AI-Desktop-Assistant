@@ -17,11 +17,11 @@ VSVersionInfo(
                     '040904B0',
                     [
                         StringStruct('FileDescription', 'AI Desktop Assistant'),
-                        StringStruct('FileVersion', '0.1.0'),
+                        StringStruct('FileVersion', '0.1.1'),
                         StringStruct('InternalName', 'AI Desktop Assistant'),
                         StringStruct('OriginalFilename', 'AI Desktop Assistant.exe'),
                         StringStruct('ProductName', 'AI Desktop Assistant'),
-                        StringStruct('ProductVersion', '0.1.0'),
+                        StringStruct('ProductVersion', '0.1.1'),
                     ],
                 )
             ]

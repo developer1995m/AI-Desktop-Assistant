@@ -9,6 +9,7 @@ from PySide6.QtGui import QGuiApplication, QKeyEvent
 from app.services.chat_service import MAX_HISTORY_MESSAGES, ChatService
 from app.services.settings import AppSettings
 from app.services.storage import ConversationStore
+from app.services.voice_service import VoiceService
 from app.ui.pages.chat_page import ChatPage
 from app.ui.widgets.chat_bubble import MessageBubble
 from app.ui.widgets.chat_input import ChatInput
@@ -67,6 +68,36 @@ def test_take_text_strips_and_clears(qt_app):
 
     assert widget.take_text() == "سلام"
     assert widget.toPlainText() == ""
+
+
+def test_page_can_convert_selected_audio_to_text(qt_app, tmp_path, monkeypatch):
+    page = make_page(qt_app, tmp_path, monkeypatch)
+    page.chat_input.setPlainText("")
+
+    monkeypatch.setattr(
+        "app.ui.pages.chat_page.QFileDialog.getOpenFileName",
+        lambda *args, **kwargs: ("/tmp/voice.wav", "Audio Files (*.wav *.mp3 *.m4a)"),
+    )
+    monkeypatch.setattr(VoiceService, "transcribe_file", lambda self, path: "متن تشخیص داده‌شده")
+
+    page.voice_button.click()
+
+    assert page.chat_input.toPlainText() == "متن تشخیص داده‌شده"
+    assert "صدا" in page.status_label.text()
+
+
+def test_page_rejects_unsupported_audio_types(qt_app, tmp_path, monkeypatch):
+    page = make_page(qt_app, tmp_path, monkeypatch)
+
+    monkeypatch.setattr(
+        "app.ui.pages.chat_page.QFileDialog.getOpenFileName",
+        lambda *args, **kwargs: ("/tmp/voice.txt", "Text Files (*.txt)"),
+    )
+
+    page.voice_button.click()
+
+    assert "فقط فایل‌های صوتی" in page.status_label.text()
+    assert page.chat_input.toPlainText() == ""
 
 
 def test_page_streams_reply_into_bubble(qt_app, tmp_path, monkeypatch, wait_for):

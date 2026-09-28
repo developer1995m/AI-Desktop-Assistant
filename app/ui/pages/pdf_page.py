@@ -26,7 +26,9 @@ from app.services.pdf_service import (
     documents_system_prompt,
     documents_use_excerpts,
     load_pdf,
+    local_search_answer,
 )
+from app.services.voice_service import VoiceService
 from app.ui.widgets.chat_bubble import MessageBubble
 from app.ui.widgets.chat_input import ChatInput
 from app.ui.widgets.document_tabs import DocumentTabs
@@ -83,6 +85,7 @@ class PdfPage(QWidget):
         self._response_text = ""
         self._stream_failed = False
         self._is_busy = False
+        self._local_fallback_used = False
 
         self._flush_timer = QTimer(self)
         self._flush_timer.setInterval(FLUSH_INTERVAL_MS)
@@ -233,12 +236,19 @@ class PdfPage(QWidget):
         self.chat_input = ChatInput()
         self.chat_input.send_requested.connect(self._submit_from_input)
 
+        self.voice_button = QPushButton("🎙️")
+        self.voice_button.setObjectName("ghostButton")
+        self.voice_button.setFixedSize(44, 44)
+        self.voice_button.setToolTip("انتخاب فایل صوتی و تبدیل آن به متن")
+        self.voice_button.clicked.connect(self._handle_voice_input)
+
         self.send_button = QPushButton("ارسال")
         self.send_button.setObjectName("primaryButton")
         self.send_button.setFixedHeight(44)
         self.send_button.clicked.connect(self._handle_primary_clicked)
 
         layout.addWidget(self.chat_input, 1)
+        layout.addWidget(self.voice_button, 0, Qt.AlignmentFlag.AlignBottom)
         layout.addWidget(self.send_button, 0, Qt.AlignmentFlag.AlignBottom)
 
         return composer
@@ -482,6 +492,41 @@ class PdfPage(QWidget):
 
         self._send(self.chat_input.take_text())
 
+    def _handle_voice_input(self) -> None:
+        """یک فایل صوتی را می‌خواند و محتوای تشخیص‌داده‌شده را به ورودی سؤال اضافه می‌کند."""
+        if self._is_busy:
+            return
+
+        path, _filter = QFileDialog.getOpenFileName(
+            self,
+            "انتخاب فایل صوتی",
+            "",
+            "Audio Files (*.wav *.mp3 *.m4a *.aac *.ogg *.flac);;All Files (*.*)",
+        )
+
+        if not path:
+            return
+
+        file_suffix = Path(path).suffix.lower()
+        supported = {".wav", ".mp3", ".m4a", ".aac", ".ogg", ".flac"}
+        if file_suffix not in supported:
+            self._set_status("فقط فایل‌های صوتی با فرمت wav، mp3، m4a، aac، ogg و flac پشتیبانی می‌شوند.")
+            return
+
+        try:
+            transcript = VoiceService(self._service._settings).transcribe_file(path)
+        except Exception as error:  # noqa: BLE001 - نمایش پیام کاربر مهم‌تر از نوع خطا است.
+            self._set_status(str(error))
+            return
+
+        current = self.chat_input.toPlainText().strip()
+        if current:
+            self.chat_input.setPlainText(f"{current}\n{transcript}")
+        else:
+            self.chat_input.setPlainText(transcript)
+
+        self._set_status("متن صدا به ورودی سؤال اضافه شد.")
+
     def _send(self, text: str) -> None:
         """سؤال کاربر را نمایش می‌دهد و پاسخ مدل را به‌صورت جریانی می‌گیرد."""
         if not text:
@@ -570,13 +615,40 @@ class PdfPage(QWidget):
         self._scroll_to_bottom()
 
     def _on_failed(self, generation: int, message: str) -> None:
-        """خطا را در گفتگو نمایش می‌دهد."""
+        """خطا را در گفتگو نمایش می‌دهد و در صورت امکان با جستجوی محلی PDF جایگزین می‌شود."""
         if generation != self._generation:
             return
 
-        self._stream_failed = True
         self._flush_timer.stop()
         self._pending_text = ""
+
+        is_missing_api_key = (
+            "OPENAI_API_KEY" in message
+            or "کلید API" in message
+            or "api key" in message.lower()
+        )
+
+        if not is_missing_api_key:
+            last_user_prompt = ""
+            if self._history and self._history[-1].get("role") == "user":
+                last_user_prompt = str(self._history[-1].get("content", "")).strip()
+
+            fallback = local_search_answer(self._documents, last_user_prompt) if last_user_prompt else ""
+            if fallback and self._documents:
+                self._local_fallback_used = True
+                self._response_text = fallback
+                bubble = self._streaming_bubble
+                if bubble is not None:
+                    bubble.set_text(fallback)
+                    bubble.role = "assistant"
+                    bubble.setObjectName("assistantBubble")
+                    _repolish(bubble)
+                self._set_status("پاسخ از متن محلی PDF استخراج شد.")
+                self._worker = None
+                self._set_busy(False)
+                return
+
+        self._stream_failed = True
 
         bubble = self._streaming_bubble
         if bubble is not None and not self._response_text.strip():
@@ -597,6 +669,15 @@ class PdfPage(QWidget):
         self._flush_timer.stop()
         self._flush_pending_text()
         self._streaming_bubble = None
+
+        if self._local_fallback_used:
+            self._local_fallback_used = False
+            self._history.append({"role": "assistant", "content": self._response_text})
+            self._worker = None
+            self._set_busy(False)
+            if self._documents:
+                self._set_status(ready_status(len(self._documents)))
+            return
 
         if self._stream_failed:
             # سؤال ناموفق از تاریخچه حذف می‌شود تا پرسیدن دوباره تمیز باشد.

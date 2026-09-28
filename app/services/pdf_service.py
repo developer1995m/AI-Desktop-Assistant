@@ -368,6 +368,40 @@ def _document_plan(
     return plan
 
 
+def local_search_answer(documents: list[PdfDocument], question: str) -> str:
+    """با استفاده از متن محلی PDF یک پاسخ کوتاه و مرتبط از سندهای باز می‌سازد.
+
+    این تابع همان‌طور که نامش می‌گوید برای حالت آفلاین یا شکست مدل طراحی شده است:
+    به‌جای شکست کامل، بهترین بخش‌های مرتبط را از متن استخراج‌شده پیدا می‌کند و یک
+    پاسخ کوتاه ولی عملی به کاربر می‌دهد.
+    """
+    if not documents:
+        return "هیچ فایل PDF باز نیست تا از متن آن جستجو شود."
+
+    clean_question = (question or "").strip()
+    if not clean_question:
+        return "برای جستجوی محلی، یک سؤال وارد نشده است."
+
+    answers: list[str] = []
+    for document in documents:
+        excerpt = select_relevant_chunks(document.text, clean_question, max_chars=1200)
+        if not excerpt.strip():
+            continue
+        if not has_matching_chunk(document.text, clean_question):
+            continue
+
+        snippet = " ".join(excerpt.split())
+        if len(snippet) > 220:
+            snippet = snippet[:220].rstrip() + "…"
+
+        answers.append(f"در «{document.name}»: {snippet}")
+
+    if not answers:
+        return "در متن PDFهای باز، هیچ بخش مرتبطی با این سؤال پیدا نشد."
+
+    return " ".join(answers[:2])
+
+
 def documents_use_excerpts(documents: list[PdfDocument], question: str) -> bool:
     """آیا در این پرسش حداقل یک سند فقط به‌صورت گزیده فرستاده می‌شود؟"""
     open_documents = [document for document in documents if document is not None]

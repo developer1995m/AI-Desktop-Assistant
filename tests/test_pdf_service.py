@@ -16,6 +16,7 @@ from app.services.pdf_service import (
     documents_system_prompt,
     documents_use_excerpts,
     load_pdf,
+    local_search_answer,
     normalise_text,
     search_terms,
     select_relevant_chunks,
@@ -214,6 +215,20 @@ def test_search_terms_ignores_punctuation_and_half_spaces():
     assert "قرارداد" in terms
     assert "فوری" in terms
     assert "1402" in terms
+
+
+def test_local_search_answer_reports_relevant_excerpt_from_pdf(tmp_path):
+    path = make_pdf(tmp_path / "rules.pdf", [
+        "Policy section: employees must submit monthly reports before the 15th.",
+        "Safety rules say helmets are required in the warehouse.",
+    ])
+    document = load_pdf(path)
+
+    answer = local_search_answer([document], "monthly reports deadline")
+
+    assert "monthly reports" in answer.lower()
+    assert "15th" in answer
+    assert "یافت نشد" not in answer
 
 
 def test_select_relevant_chunks_matches_spacing_variants(monkeypatch):

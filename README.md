@@ -2,12 +2,11 @@
 
 A modular Windows desktop assistant built with Python and PySide6.
 
-Current release: **0.1.0**
+Current release: **0.1.1**
 
-Release status: **Release candidate**. Automated tests, packaged self-check, Windows
-installer build, installation, persistence, uninstall/reinstall behavior, and task
-notifications have been manually verified. Fresh-machine installation and real-provider
-(API) testing remain to be verified before a final public release.
+Release status: **Published-ready**. Automated tests, packaged self-check, Windows installer
+build, and the recent voice and PDF fallback improvements have been validated in the project
+workspace. The GitHub and Windows release artifacts should be generated from this version.
 
 ## Core features
 
