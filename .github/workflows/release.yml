@@ -1,0 +1,70 @@
+name: Windows Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish Windows update assets
+    runs-on: windows-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Verify tag matches application version
+        shell: pwsh
+        run: |
+          $version = python -c "from app.version import APP_VERSION; print(APP_VERSION)"
+          if ($env:GITHUB_REF_NAME -ne "v$version") {
+            throw "Release tag $env:GITHUB_REF_NAME does not match app version v$version"
+          }
+
+      - name: Run tests
+        run: python -m pytest tests -q
+
+      - name: Build application bundle
+        run: python -m PyInstaller --noconfirm --clean ai_desktop_assistant.spec
+
+      - name: Self-check packaged application
+        run: "& 'dist/AI Desktop Assistant/AI Desktop Assistant.exe' --self-check"
+
+      - name: Build standalone updater
+        run: python -m PyInstaller --noconfirm --clean updater.spec
+
+      - name: Create complete bundle archive
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force release | Out-Null
+          Compress-Archive -Path 'dist/AI Desktop Assistant/*' `
+            -DestinationPath 'release/AI-Desktop-Assistant-Windows-x64.zip' `
+            -CompressionLevel Optimal -Force
+          Copy-Item 'dist/AI Desktop Assistant Updater.exe' `
+            'release/AI-Desktop-Assistant-Updater.exe'
+          python -c "import zipfile; z=zipfile.ZipFile('release/AI-Desktop-Assistant-Windows-x64.zip'); n=z.namelist(); assert 'AI Desktop Assistant.exe' in n and any(p.startswith('_internal/') for p in n)"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          gh release create $env:GITHUB_REF_NAME `
+            'release/AI-Desktop-Assistant-Windows-x64.zip' `
+            'release/AI-Desktop-Assistant-Updater.exe' `
+            --title "AI Desktop Assistant $env:GITHUB_REF_NAME" `
+            --generate-notes

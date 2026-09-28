@@ -81,6 +81,11 @@ The authoritative application version is `0.1.0`. See [CHANGELOG.md](CHANGELOG.m
 current release summary. Optional semantic PDF retrieval is installed separately with
 `requirements-embeddings.txt`; without it, multilingual lexical retrieval remains available.
 
+Packaged Windows builds can check for updates from Settings. A GitHub Release must include
+`AI-Desktop-Assistant-Windows-x64.zip` (the complete PyInstaller onedir folder) and
+`AI-Desktop-Assistant-Updater.exe`. GitHub's asset API SHA-256 digests are required for both
+files. The updater replaces the application bundle only; user data remains under `%APPDATA%`.
+
 ## First run and network behaviour
 
 Until a key is saved, the chat page shows a setup banner with a button that jumps straight to
@@ -119,8 +124,10 @@ Tests run headlessly through the Qt `offscreen` platform.
 build.bat
 ```
 
-The script runs the tests, packages the app with PyInstaller and then verifies the result:
-the output lands in `dist\AI Desktop Assistant\AI Desktop Assistant.exe`. To package manually:
+The script runs the tests, packages the app with PyInstaller and verifies the result. It also
+builds the standalone updater and creates the complete update assets under `release\`:
+`AI-Desktop-Assistant-Windows-x64.zip` and `AI-Desktop-Assistant-Updater.exe`. To package the
+application manually:
 
 ```bash
 .venv\Scripts\python.exe -m PyInstaller --noconfirm --clean ai_desktop_assistant.spec
@@ -128,6 +135,11 @@ the output lands in `dist\AI Desktop Assistant\AI Desktop Assistant.exe`. To pac
 
 `main.py --self-check` builds the window, opens a generated PDF and prints `self-check: OK`
 without showing any UI; it is what verifies a packaged build (and works in CI).
+
+To publish an update, set `APP_VERSION` in `app/version.py`, commit the change, then push a
+matching `v<version>` tag (for example, `v0.2.0`). The Windows Release workflow runs tests,
+builds both executables, packages the full onedir bundle and publishes the two required assets.
+The updater check and install action are available only in the frozen Windows application.
 
 When the app runs from a bundle, the folder next to the executable may be read-only, so the
 database and `.env` move to the user data folder (`%APPDATA%\AI Desktop Assistant\`). Runs from

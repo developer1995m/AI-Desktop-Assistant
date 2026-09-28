@@ -29,6 +29,7 @@ from app.services.ui_state import (
 )
 from app.ui.branding import load_app_icon
 from app.ui.pages.chat_page import ChatPage
+from app.ui.pages.help_page import HelpPage
 from app.ui.pages.dashboard_page import DashboardPage
 from app.ui.pages.memory_page import MemoryPage
 from app.ui.pages.notes_page import NotesPage
@@ -110,6 +111,10 @@ class MainWindow(QMainWindow):
 
         self.pdf_page = PdfPage(self.chat_service)
         self.page_indexes["pdf"] = self.page_stack.addWidget(self.pdf_page)
+
+        # راهنمای کاربر کاملاً مستقل از منطق صفحه‌های موجود است.
+        self.help_page = HelpPage()
+        self.page_indexes["help"] = self.page_stack.addWidget(self.help_page)
 
         content_widget = QWidget()
         content_layout = QVBoxLayout(content_widget)
@@ -314,7 +319,7 @@ class MainWindow(QMainWindow):
             activated=self._stop_active_response,
         )
 
-        page_keys = ("dashboard", "chat", "notes", "tasks", "pdf", "memory", "settings")
+        page_keys = ("dashboard", "chat", "notes", "tasks", "pdf", "memory", "settings", "help")
         for index, page_key in enumerate(page_keys, start=1):
             QShortcut(
                 QKeySequence(f"Ctrl+{index}"),
@@ -478,4 +483,7 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(stylesheet(theme))
         self._sync_theme_button()
         self.settings_page.set_theme_selection(theme)
+
+
+
 

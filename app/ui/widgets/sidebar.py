@@ -23,6 +23,7 @@ class Sidebar(QWidget):
         ("pdf", "▧", "دستیار PDF"),
         ("memory", "◈", "حافظه"),
         ("settings", "⚙", "تنظیمات"),
+        ("help", "?", "راهنما"),
     ]
 
     def __init__(self) -> None:
@@ -77,3 +78,6 @@ class Sidebar(QWidget):
     ) -> None:
         """فهرست گفتگوهای ذخیره‌شده را به‌روز می‌کند."""
         self.conversations.set_conversations(conversations, active_id)
+
+
+

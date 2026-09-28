@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
@@ -13,6 +14,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QLineEdit,
     QMessageBox,
+    QProgressBar,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -66,7 +68,19 @@ from app.services.settings import (
     AppSettings,
 )
 from app.services.storage import ConversationStore
-from app.ui.workers import ConnectionTestWorker
+from app.services.paths import is_frozen, user_data_dir
+from app.services.updater import (
+    DownloadedUpdate,
+    UpdateError,
+    UpdateInfo,
+    launch_updater,
+)
+from app.version import APP_VERSION
+from app.ui.workers import (
+    ConnectionTestWorker,
+    UpdateCheckWorker,
+    UpdateDownloadWorker,
+)
 from app.ui.theme import DARK, LIGHT, SYSTEM
 
 THEME_OPTIONS = (
@@ -97,6 +111,9 @@ class SettingsPage(QWidget):
         self._settings = settings
         self._store = store
         self._test_worker: ConnectionTestWorker | None = None
+        self._update_check_worker: UpdateCheckWorker | None = None
+        self._update_download_worker: UpdateDownloadWorker | None = None
+        self._pending_update: UpdateInfo | None = None
         self._theme = theme
 
         # صفحه در یک QScrollArea می‌نشیند تا در پنجره‌های کوتاه، فرم و دکمه‌ها
@@ -110,6 +127,7 @@ class SettingsPage(QWidget):
 
         layout.addWidget(self._create_heading())
         layout.addWidget(self._create_form_frame(), 1)
+        layout.addWidget(self._create_update_frame())
         layout.addWidget(self._create_data_frame())
 
         scroll = QScrollArea()
@@ -347,6 +365,54 @@ class SettingsPage(QWidget):
 
         return frame
 
+    def _create_update_frame(self) -> QFrame:
+        """بررسی و نصب bundle کامل برنامه."""
+        frame = QFrame()
+        frame.setObjectName("settingsFrame")
+        frame.setMaximumWidth(640)
+
+        layout = QVBoxLayout(frame)
+        layout.setContentsMargins(20, 18, 20, 18)
+        layout.setSpacing(10)
+
+        heading = QLabel("به‌روزرسانی برنامه")
+        heading.setObjectName("panelHeading")
+        layout.addWidget(heading)
+
+        self.update_version_label = QLabel(f"نسخه فعلی: {APP_VERSION}")
+        self.update_version_label.setObjectName("pageDescription")
+        layout.addWidget(self.update_version_label)
+
+        self.update_button = QPushButton("بررسی به‌روزرسانی")
+        self.update_button.setObjectName("ghostButton")
+        self.update_button.setFixedHeight(36)
+        self.update_button.clicked.connect(self.check_for_updates)
+        layout.addWidget(self.update_button, 0, Qt.AlignmentFlag.AlignLeft)
+
+        self.update_status_label = QLabel(
+            "نصب خودکار فقط در نسخه بسته‌بندی‌شده ویندوز در دسترس است."
+            if sys.platform != "win32" or not is_frozen()
+            else "برای دریافت نسخه جدید، بررسی را شروع کنید."
+        )
+        self.update_status_label.setObjectName("settingsStatus")
+        self.update_status_label.setWordWrap(True)
+        layout.addWidget(self.update_status_label)
+
+        self.update_progress = QProgressBar()
+        self.update_progress.setRange(0, 100)
+        self.update_progress.setValue(0)
+        self.update_progress.setTextVisible(True)
+        self.update_progress.hide()
+        layout.addWidget(self.update_progress)
+
+        if sys.platform != "win32" or not is_frozen():
+            self.update_button.setEnabled(False)
+            self.update_button.setToolTip(
+                "به‌روزرسانی خودکار فقط در نسخه بسته‌بندی‌شده ویندوز فعال است."
+            )
+
+        return frame
+
     # --------------------------------------------------------------------- رفتار
 
     def reload(self) -> None:
@@ -517,6 +583,108 @@ class SettingsPage(QWidget):
         self.test_button.setEnabled(True)
         self.test_button.setText("تست اتصال")
 
+    def check_for_updates(self) -> None:
+        """آخرین Release را در رشته پس‌زمینه بررسی می‌کند."""
+        if self._update_check_worker is not None or self._update_download_worker is not None:
+            return
+
+        worker = UpdateCheckWorker()
+        worker.completed.connect(self._on_update_check_completed)
+        worker.failed.connect(self._on_update_check_failed)
+        worker.finished.connect(self._on_update_check_finished)
+        self._update_check_worker = worker
+        self.update_button.setEnabled(False)
+        self.update_button.setText("در حال بررسی…")
+        self.update_status_label.setText("در حال بررسی آخرین نسخه در GitHub…")
+        worker.start()
+
+    def _on_update_check_completed(self, update: UpdateInfo | None) -> None:
+        if update is None:
+            self.update_status_label.setText("برنامه به‌روز است.")
+            return
+
+        size_mb = (update.bundle_size + update.updater_size) / (1024 * 1024)
+        answer = QMessageBox.question(
+            self,
+            "نسخه جدید موجود است",
+            f"نسخه {update.version} آماده است. حجم دریافت حدود {size_mb:.1f} مگابایت است.\n"
+            "دانلود bundle کامل برنامه و نصب آن را شروع می‌کنید؟",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            self.update_status_label.setText("به‌روزرسانی لغو شد.")
+            return
+
+        self._start_update_download(update)
+
+    def _on_update_check_failed(self, message: str) -> None:
+        self.update_status_label.setText(f"بررسی به‌روزرسانی ناموفق بود: {message}")
+
+    def _on_update_check_finished(self) -> None:
+        self._update_check_worker = None
+        if self._update_download_worker is None:
+            self.update_button.setEnabled(True)
+            self.update_button.setText("بررسی به‌روزرسانی")
+
+    def _start_update_download(self, update: UpdateInfo) -> None:
+        destination = user_data_dir() / "updates"
+        self._pending_update = update
+        worker = UpdateDownloadWorker(update, destination)
+        worker.progress.connect(self._on_update_download_progress)
+        worker.completed.connect(self._on_update_download_completed)
+        worker.failed.connect(self._on_update_download_failed)
+        worker.finished.connect(self._on_update_download_finished)
+        self._update_download_worker = worker
+        self.update_button.setText("در حال دریافت…")
+        self.update_progress.setRange(0, max(update.bundle_size + update.updater_size, 1))
+        self.update_progress.setValue(0)
+        self.update_progress.show()
+        self.update_status_label.setText("در حال دریافت و اعتبارسنجی فایل‌ها…")
+        worker.start()
+
+    def _on_update_download_progress(self, received: int, total: int) -> None:
+        self.update_progress.setRange(0, max(total, 1))
+        self.update_progress.setValue(received)
+
+    def _on_update_download_completed(self, downloaded: DownloadedUpdate) -> None:
+        answer = QMessageBox.question(
+            self,
+            "آماده نصب",
+            "فایل‌ها دریافت و اعتبارسنجی شدند. برنامه بسته می‌شود و پس از جایگزینی bundle "
+            "دوباره اجرا خواهد شد. ادامه می‌دهید؟",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            self.update_status_label.setText("نصب لغو شد؛ فایل‌های دانلودشده باقی می‌مانند.")
+            return
+
+        update = self._pending_update
+        if update is None:
+            self.update_status_label.setText("اطلاعات نسخه برای نصب پیدا نشد.")
+            return
+
+        try:
+            launch_updater(update, downloaded)
+        except UpdateError as error:
+            self.update_status_label.setText(str(error))
+            return
+
+        self.update_status_label.setText("Updater شروع شد؛ برنامه در حال بسته‌شدن است…")
+        self.window().close()
+
+    def _on_update_download_failed(self, message: str) -> None:
+        self.update_status_label.setText(f"دریافت به‌روزرسانی ناموفق بود: {message}")
+
+    def _on_update_download_finished(self) -> None:
+        self._update_download_worker = None
+        self._pending_update = None
+        self.update_button.setEnabled(True)
+        self.update_button.setText("بررسی به‌روزرسانی")
+        if not self.update_status_label.text().startswith("فایل‌ها دریافت"):
+            self.update_progress.hide()
+
     def shutdown(self) -> None:
         """منتظر پایان تست اتصال در حال اجرا می‌ماند تا بستن برنامه امن باشد."""
         worker = self._test_worker
@@ -525,6 +693,17 @@ class SettingsPage(QWidget):
 
         worker.wait(5000)
         self._test_worker = None
+
+        check_worker = self._update_check_worker
+        if check_worker is not None:
+            check_worker.wait()
+            self._update_check_worker = None
+
+        download_worker = self._update_download_worker
+        if download_worker is not None:
+            download_worker.request_stop()
+            download_worker.wait()
+            self._update_download_worker = None
 
     # ---------------------------------------------------- پشتیبان‌گیری و بازیابی
 

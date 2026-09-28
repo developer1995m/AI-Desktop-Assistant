@@ -15,6 +15,7 @@ build/
 dist/
 *.spec
 !ai_desktop_assistant.spec
+!updater.spec
 
 # Local application data
 data/*.db
@@ -39,3 +40,6 @@ _review.html
 
 # Installer build output
 installer/
+
+# Generated update release assets
+release/

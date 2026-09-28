@@ -22,6 +22,14 @@ echo [build] بسته‌بندی برنامه...
 echo [build] بررسی سلامت نسخه ساخته‌شده...
 "%APP%" --self-check || exit /b 1
 
+echo [build] ساخت updater مستقل...
+"%PYTHON%" -m PyInstaller --noconfirm --clean "updater.spec" || exit /b 1
+
+if not exist "release" mkdir "release"
+echo [build] فشرده‌سازی bundle کامل...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Compress-Archive -Path 'dist\AI Desktop Assistant\*' -DestinationPath 'release\AI-Desktop-Assistant-Windows-x64.zip' -CompressionLevel Optimal -Force" || exit /b 1
+copy /y "dist\AI Desktop Assistant Updater.exe" "release\AI-Desktop-Assistant-Updater.exe" >nul || exit /b 1
+
 where ISCC.exe >nul 2>nul
 if %errorlevel% equ 0 (
     echo [build] ساخت نصاب ویندوز...
@@ -32,4 +40,5 @@ if %errorlevel% equ 0 (
 )
 
 echo [build] آماده است: %APP%
+echo [build] فایل‌های Release: release\AI-Desktop-Assistant-Windows-x64.zip و release\AI-Desktop-Assistant-Updater.exe
 exit /b 0

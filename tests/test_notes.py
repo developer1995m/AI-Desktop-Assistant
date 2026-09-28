@@ -12,6 +12,7 @@ from app.ui.pages.notes_page import NotesPage, preview_text
 from app.ui.pages.pdf_page import PdfPage
 from app.ui.pages.settings_page import SettingsPage
 from app.ui.pages.tasks_page import TasksPage
+from app.ui.pages.help_page import HelpPage
 
 from tests.test_main_window import make_window
 
@@ -315,13 +316,14 @@ def test_no_placeholder_pages_remain(qt_app, tmp_path, monkeypatch):
     window = make_window(qt_app, tmp_path, monkeypatch)
 
     real_page_types = (
-        ChatPage,
-        DashboardPage,
-        SettingsPage,
-        NotesPage,
-        TasksPage,
-        MemoryPage,
-        PdfPage,
+    ChatPage,
+    DashboardPage,
+    SettingsPage,
+    NotesPage,
+    TasksPage,
+    MemoryPage,
+    PdfPage,
+    HelpPage,
     )
 
     # هر صفحه‌ای که در سایدبار هست باید نمونه واقعی خودش باشد، نه Placeholder موقت.

@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 import threading
+from pathlib import Path
 
 from PySide6.QtCore import QThread, Signal
 
 from app.services.chat_service import ChatService, describe_error
+from app.services.updater import (
+    UpdateInfo,
+    download_update,
+    get_latest_release,
+)
 
 
 class ChatStreamWorker(QThread):
@@ -80,3 +86,45 @@ class ConnectionTestWorker(QThread):
             self.succeeded.emit(self._service.check_connection())
         except Exception as error:  # noqa: BLE001 - همه خطاها به پیام کاربر تبدیل می‌شوند
             self.failed.emit(describe_error(error))
+
+
+class UpdateCheckWorker(QThread):
+    """Release گیت‌هاب را بیرون از رشته رابط کاربری بررسی می‌کند."""
+
+    completed = Signal(object)
+    failed = Signal(str)
+
+    def run(self) -> None:
+        try:
+            self.completed.emit(get_latest_release())
+        except Exception as error:  # noqa: BLE001 - خطا به وضعیت قابل نمایش تبدیل می‌شود
+            self.failed.emit(str(error))
+
+
+class UpdateDownloadWorker(QThread):
+    """bundle و updater را دانلود و checksum هر دو را بررسی می‌کند."""
+
+    progress = Signal(int, int)
+    completed = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, update: UpdateInfo, destination: Path) -> None:
+        super().__init__()
+        self._update = update
+        self._destination = Path(destination)
+        self._stop_event = threading.Event()
+
+    def request_stop(self) -> None:
+        self._stop_event.set()
+
+    def run(self) -> None:
+        try:
+            result = download_update(
+                self._update,
+                self._destination,
+                self.progress.emit,
+                self._stop_event.is_set,
+            )
+            self.completed.emit(result)
+        except Exception as error:  # noqa: BLE001 - همه خطاها به UI فرستاده می‌شوند
+            self.failed.emit(str(error))

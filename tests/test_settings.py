@@ -5,6 +5,7 @@ import pytest
 from app.services.chat_service import ChatService
 from app.services.settings import AppSettings
 from app.ui.main_window import MainWindow
+from app.ui.pages import settings_page as settings_page_module
 from app.ui.pages.settings_page import SettingsPage
 
 from tests.test_chat_service import FakeClient
@@ -120,6 +121,16 @@ def test_settings_page_round_trip(qt_app, tmp_path, monkeypatch):
     assert fresh_page.model_input.text() == "gpt-4o"
     assert fresh_page.base_url_input.text() == "https://example.test/v1"
     assert "آماده است" in fresh_page.status_label.text()
+
+
+def test_automatic_update_is_disabled_for_source_runs(
+    qt_app, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings_page_module, "is_frozen", lambda: False)
+    page = SettingsPage(make_settings(tmp_path, monkeypatch))
+
+    assert page.update_button.isEnabled() is False
+    assert "فقط در نسخه بسته‌بندی‌شده" in page.update_status_label.text()
 
 
 def test_settings_page_default_model_shows_placeholder(qt_app, tmp_path, monkeypatch):
