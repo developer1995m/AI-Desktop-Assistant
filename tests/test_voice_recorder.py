@@ -102,6 +102,69 @@ def test_recorder_writes_valid_mono_wav_from_microphone(qt_app, monkeypatch, tmp
         path.unlink(missing_ok=True)
 
 
+def test_recorder_falls_back_to_preferred_device_format(monkeypatch):
+    preferred = audio_format(QAudioFormat.SampleFormat.Int16, 2)
+
+    class FakeDevice:
+        def isNull(self):
+            return False
+
+        def isFormatSupported(self, audio_format):
+            return audio_format.sampleRate() == 16_000
+
+        def preferredFormat(self):
+            return preferred
+
+        def description(self):
+            return "Test microphone"
+
+    class FakeInput:
+        class _Signal:
+            def connect(self, _callback):
+                pass
+
+        readyRead = _Signal()
+
+    class FakeSource:
+        def __init__(self, _device, audio_format, _parent):
+            self.audio_format = audio_format
+            self.input = FakeInput()
+
+        def setBufferSize(self, _size):
+            pass
+
+        def start(self):
+            return None if self.audio_format.sampleRate() == 16_000 else self.input
+
+        def error(self):
+            return QAudio.Error.OpenError if self.audio_format.sampleRate() == 16_000 else QAudio.Error.NoError
+
+        def stop(self):
+            pass
+
+        def deleteLater(self):
+            pass
+
+        class _Signal:
+            def connect(self, _callback):
+                pass
+
+        stateChanged = _Signal()
+
+    monkeypatch.setattr(
+        voice_recorder.QMediaDevices,
+        "defaultAudioInput",
+        staticmethod(lambda: FakeDevice()),
+    )
+    monkeypatch.setattr(voice_recorder, "QAudioSource", FakeSource)
+
+    recorder = MicrophoneRecorder()
+    recorder.start_recording()
+
+    assert recorder.is_recording
+    assert recorder._format == preferred
+
+
 def test_transcription_worker_deletes_recording_after_failure(tmp_path):
     path = tmp_path / "recording.wav"
     path.write_bytes(b"temporary audio")

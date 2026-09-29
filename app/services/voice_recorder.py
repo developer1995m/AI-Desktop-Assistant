@@ -80,30 +80,46 @@ class MicrophoneRecorder(QObject):
         requested_format.setSampleRate(16_000)
         requested_format.setChannelCount(1)
         requested_format.setSampleFormat(QAudioFormat.SampleFormat.Int16)
-        audio_format = (
-            requested_format
-            if device.isFormatSupported(requested_format)
-            else device.preferredFormat()
-        )
-        if not audio_format.isValid():
-            raise VoiceRecorderError("قالب ضبط میکروفن معتبر نیست.")
+        preferred_format = device.preferredFormat()
+        formats = [requested_format, preferred_format]
+        if not device.isFormatSupported(requested_format):
+            formats = [preferred_format]
 
-        source = QAudioSource(device, audio_format, self)
-        source.setBufferSize(max(audio_format.bytesPerFrame() * 4096, 8192))
-        source.stateChanged.connect(self._on_source_state_changed)
+        source = None
+        audio_format = None
+        last_error = QAudio.Error.NoError
+        for candidate in formats:
+            if not candidate.isValid():
+                continue
+            candidate_source = QAudioSource(device, candidate, self)
+            candidate_source.setBufferSize(max(candidate.bytesPerFrame() * 4096, 8192))
+            candidate_source.stateChanged.connect(self._on_source_state_changed)
+            candidate_input = candidate_source.start()
+            candidate_error = candidate_source.error()
+            if candidate_input is not None and candidate_error == QAudio.Error.NoError:
+                source = candidate_source
+                audio_format = candidate
+                self._input = candidate_input
+                break
+
+            last_error = candidate_error
+            candidate_source.stop()
+            candidate_source.deleteLater()
+
+        if source is None or audio_format is None or self._input is None:
+            self._input = None
+            error_name = getattr(last_error, "name", str(last_error))
+            raise VoiceRecorderError(
+                f"دسترسی به میکروفن ممکن نشد ({device.description()}، خطای {error_name}). "
+                "مجوز میکروفن و اتصال دستگاه را بررسی کنید."
+            )
+
         self._raw_audio.clear()
         self._format = audio_format
         self._source = source
-        self._input = source.start()
 
-        if self._input is None or source.error() != QAudio.Error.NoError:
-            self.cancel()
-            raise VoiceRecorderError(
-                "دسترسی به میکروفن ممکن نشد؛ مجوز و اتصال میکروفن را بررسی کنید."
-            )
-
-        self._input.readyRead.connect(self._read_audio)
         self._recording = True
+        self._input.readyRead.connect(self._read_audio)
         self.recording_changed.emit(True)
 
     def stop_recording(self) -> Path:

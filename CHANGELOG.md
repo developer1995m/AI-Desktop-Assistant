@@ -2,6 +2,17 @@
 
 All notable changes for this project are documented here.
 
+## [0.1.5] - 2026-09-29
+
+### Fixed
+
+- Microphone startup now falls back to the device's preferred audio format when the requested format cannot be opened.
+- Microphone errors now include the detected device and backend error instead of one generic message.
+
+### Testing
+
+- Added coverage for preferred-format fallback.
+
 ## [0.1.4] - 2026-09-29
 
 ### Added
