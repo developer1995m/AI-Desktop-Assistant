@@ -1,8 +1,9 @@
 """تست‌های سیستم تم تیره/روشن و کنتراست رنگ‌ها."""
 
 import pytest
-from PySide6.QtCore import QRect
-from PySide6.QtWidgets import QLabel
+from PySide6.QtCore import QPoint, QRect
+from PySide6.QtGui import QImage
+from PySide6.QtWidgets import QFrame, QLabel
 
 from app.services.ui_state import UiStateStore
 from app.ui.theme import (
@@ -99,6 +100,34 @@ def test_help_page_scroll_uses_theme_background(qt_app):
     assert not scroll.viewport().autoFillBackground()
     assert "background: transparent" in scroll.styleSheet()
     assert f"background-color: {DARK_PALETTE['window']}" in page.styleSheet()
+
+
+def test_help_cards_and_tabs_render_with_dark_theme(qt_app):
+    page = HelpPage()
+    page.resize(900, 700)
+    page.setStyleSheet(stylesheet(DARK))
+    page.show()
+    qt_app.processEvents()
+
+    card = page.findChild(QFrame, "helpCard")
+    point = card.mapTo(page, QPoint(40, 6))
+    image = QImage(page.size(), QImage.Format.Format_ARGB32)
+    image.fill(0)
+    page.render(image)
+    rendered_card_color = image.pixelColor(point)
+    rendered_card_hex = (
+        f"#{rendered_card_color.red():02x}"
+        f"{rendered_card_color.green():02x}"
+        f"{rendered_card_color.blue():02x}"
+    )
+    dark_style = stylesheet(DARK)
+
+    assert rendered_card_hex == DARK_PALETTE["surfaceSubtle"]
+    assert "#helpText" in dark_style
+    assert "#helpTabs QTabBar::tab" in dark_style
+    assert DARK_PALETTE["textBody"] in dark_style
+
+    page.close()
 
 
 def test_settings_field_labels_follow_the_selected_theme(qt_app, tmp_path, monkeypatch):

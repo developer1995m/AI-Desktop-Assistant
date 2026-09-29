@@ -96,6 +96,34 @@ def stylesheet(theme: str = DEFAULT_THEME) -> str:
             #helpPage, #helpTabContent {{
                 background-color: {colors['window']};
             }}
+            #helpTabs::pane {{
+                background-color: {colors['window']};
+                border: 1px solid {colors['border']};
+            }}
+            #helpTabs QTabBar::tab {{
+                color: {colors['textSecondary']};
+                background-color: {colors['surfaceSubtle']};
+                border: 1px solid {colors['border']};
+                padding: 7px 10px;
+            }}
+            #helpTabs QTabBar::tab:selected {{
+                color: {colors['textPrimary']};
+                background-color: {colors['surface']};
+                border-bottom-color: {colors['surface']};
+            }}
+            #helpTabs QTabBar::tab:hover {{
+                color: {colors['textPrimary']};
+                background-color: {colors['raised']};
+            }}
+            #helpCard {{
+                background-color: {colors['surfaceSubtle']};
+                border: 1px solid {colors['border']};
+                border-radius: 8px;
+            }}
+            #helpText {{
+                color: {colors['textBody']};
+                font-size: 13px;
+            }}
         """
     leftover = re.findall(r"@[A-Za-z_][A-Za-z0-9_]*", output)
     if leftover:  # pragma: no cover - محافظ نگهداری، نه مسیر عادی

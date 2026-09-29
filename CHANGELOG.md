@@ -2,6 +2,16 @@
 
 All notable changes for this project are documented here.
 
+## [0.1.3] - 2026-09-29
+
+### Fixed
+
+- Help page tabs, cards, and text now follow the selected theme, including dark mode.
+
+### Testing
+
+- Full test suite passes, including pixel-level verification of dark-mode help cards.
+
 ## [0.1.2] - 2026-09-28
 
 ### Added

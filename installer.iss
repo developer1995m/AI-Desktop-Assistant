@@ -1,7 +1,7 @@
 ; Inno Setup installer for AI Desktop Assistant.
 #define MyAppName "AI Desktop Assistant"
 #ifndef MyAppVersion
-#define MyAppVersion "0.1.2"
+#define MyAppVersion "0.1.3"
 #endif
 #define MyAppPublisher "AI Desktop Assistant"
 #define MyAppExeName "AI Desktop Assistant.exe"
