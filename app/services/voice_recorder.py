@@ -1,0 +1,180 @@
+"""ضبط مستقیم صدای میکروفن به فایل WAV موقت."""
+
+from __future__ import annotations
+
+import struct
+import tempfile
+import wave
+from pathlib import Path
+
+from PySide6.QtCore import QObject, Signal
+from PySide6.QtMultimedia import QAudio, QAudioFormat, QAudioSource, QMediaDevices
+
+
+class VoiceRecorderError(RuntimeError):
+    """خطای دسترسی یا ضبط میکروفن."""
+
+
+def _to_mono_pcm16(raw: bytes, audio_format: QAudioFormat) -> bytes:
+    """نمونه‌های خام دستگاه را به PCM شانزده‌بیتی تک‌کاناله تبدیل می‌کند."""
+    sample_format = audio_format.sampleFormat()
+    channel_count = audio_format.channelCount()
+    bytes_per_sample = audio_format.bytesPerSample()
+    frame_size = bytes_per_sample * channel_count
+    usable_length = len(raw) - len(raw) % frame_size
+    if usable_length == 0:
+        return b""
+
+    if sample_format == QAudioFormat.SampleFormat.Int16:
+        samples = struct.iter_unpack("<h", raw[:usable_length])
+        convert = lambda value: value[0]
+    elif sample_format == QAudioFormat.SampleFormat.UInt8:
+        samples = ((value,) for value in raw[:usable_length])
+        convert = lambda value: (value[0] - 128) << 8
+    elif sample_format == QAudioFormat.SampleFormat.Int32:
+        samples = struct.iter_unpack("<i", raw[:usable_length])
+        convert = lambda value: value[0] >> 16
+    elif sample_format == QAudioFormat.SampleFormat.Float:
+        samples = struct.iter_unpack("<f", raw[:usable_length])
+        convert = lambda value: round(max(-1.0, min(1.0, value[0])) * 32767)
+    else:
+        raise VoiceRecorderError("قالب صدای میکروفن پشتیبانی نمی‌شود.")
+
+    converted = [convert(sample) for sample in samples]
+    output = bytearray()
+    for offset in range(0, len(converted), channel_count):
+        mono = round(sum(converted[offset : offset + channel_count]) / channel_count)
+        output.extend(struct.pack("<h", max(-32768, min(32767, mono))))
+
+    return bytes(output)
+
+
+class MicrophoneRecorder(QObject):
+    """ضبط صدای میکروفن پیش‌فرض و تحویل فایل WAV برای transcription."""
+
+    recording_changed = Signal(bool)
+    failed = Signal(str)
+
+    def __init__(self, parent: QObject | None = None) -> None:
+        super().__init__(parent)
+        self._source: QAudioSource | None = None
+        self._input = None
+        self._format: QAudioFormat | None = None
+        self._raw_audio = bytearray()
+        self._recording = False
+
+    @property
+    def is_recording(self) -> bool:
+        return self._recording
+
+    def start_recording(self) -> None:
+        """ضبط را با قالب PCM استاندارد آغاز می‌کند."""
+        if self._recording:
+            return
+
+        device = QMediaDevices.defaultAudioInput()
+        if device.isNull():
+            raise VoiceRecorderError("میکروفنی برای ضبط پیدا نشد.")
+
+        requested_format = QAudioFormat()
+        requested_format.setSampleRate(16_000)
+        requested_format.setChannelCount(1)
+        requested_format.setSampleFormat(QAudioFormat.SampleFormat.Int16)
+        audio_format = (
+            requested_format
+            if device.isFormatSupported(requested_format)
+            else device.preferredFormat()
+        )
+        if not audio_format.isValid():
+            raise VoiceRecorderError("قالب ضبط میکروفن معتبر نیست.")
+
+        source = QAudioSource(device, audio_format, self)
+        source.setBufferSize(max(audio_format.bytesPerFrame() * 4096, 8192))
+        source.stateChanged.connect(self._on_source_state_changed)
+        self._raw_audio.clear()
+        self._format = audio_format
+        self._source = source
+        self._input = source.start()
+
+        if self._input is None or source.error() != QAudio.Error.NoError:
+            self.cancel()
+            raise VoiceRecorderError(
+                "دسترسی به میکروفن ممکن نشد؛ مجوز و اتصال میکروفن را بررسی کنید."
+            )
+
+        self._input.readyRead.connect(self._read_audio)
+        self._recording = True
+        self.recording_changed.emit(True)
+
+    def stop_recording(self) -> Path:
+        """ضبط را متوقف و صدای ثبت‌شده را در WAV موقت ذخیره می‌کند."""
+        if not self._recording or self._source is None or self._format is None:
+            raise VoiceRecorderError("ضبط فعالی برای توقف وجود ندارد.")
+
+        source = self._source
+        self._recording = False
+        source.stop()
+        self._read_audio()
+        source.deleteLater()
+        self._source = None
+        self._input = None
+        audio_format = self._format
+        self._format = None
+        self.recording_changed.emit(False)
+
+        path: Path | None = None
+        try:
+            pcm_data = _to_mono_pcm16(bytes(self._raw_audio), audio_format)
+            if not pcm_data:
+                raise VoiceRecorderError("صدایی ضبط نشد؛ دوباره تلاش کنید.")
+
+            temporary = tempfile.NamedTemporaryFile(
+                prefix="ai-desktop-assistant-voice-",
+                suffix=".wav",
+                delete=False,
+            )
+            path = Path(temporary.name)
+            temporary.close()
+            with wave.open(str(path), "wb") as output:
+                output.setnchannels(1)
+                output.setsampwidth(2)
+                output.setframerate(audio_format.sampleRate())
+                output.writeframes(pcm_data)
+            return path
+        except (OSError, wave.Error) as error:
+            if path is not None:
+                path.unlink(missing_ok=True)
+            raise VoiceRecorderError(f"ذخیره صدای ضبط‌شده ممکن نشد: {error}") from error
+        finally:
+            self._raw_audio.clear()
+
+    def cancel(self) -> None:
+        """ضبط جاری را بدون ساخت فایل لغو می‌کند."""
+        was_recording = self._recording
+        self._recording = False
+        if self._source is not None:
+            self._source.stop()
+            self._source.deleteLater()
+        self._source = None
+        self._input = None
+        self._format = None
+        self._raw_audio.clear()
+        if was_recording:
+            self.recording_changed.emit(False)
+
+    def _read_audio(self) -> None:
+        if self._input is not None and self._input.bytesAvailable():
+            self._raw_audio.extend(bytes(self._input.readAll()))
+
+    def _on_source_state_changed(self, _state: QAudio.State) -> None:
+        source = self._source
+        if (
+            self._recording
+            and source is not None
+            and source.state() == QAudio.State.StoppedState
+            and source.error() != QAudio.Error.NoError
+        ):
+            self.cancel()
+            self.failed.emit(
+                "ضبط از میکروفن متوقف شد؛ دسترسی یا اتصال میکروفن را بررسی کنید."
+            )

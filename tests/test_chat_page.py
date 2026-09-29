@@ -71,33 +71,63 @@ def test_take_text_strips_and_clears(qt_app):
     assert widget.toPlainText() == ""
 
 
-def test_page_can_convert_selected_audio_to_text(qt_app, tmp_path, monkeypatch):
+def test_page_records_microphone_and_converts_speech_to_text(
+    qt_app, tmp_path, monkeypatch, wait_for
+):
     page = make_page(qt_app, tmp_path, monkeypatch)
     page.chat_input.setPlainText("")
+    audio_path = tmp_path / "recording.wav"
+    audio_path.write_bytes(b"recorded audio")
 
+    class FakeRecorder:
+        is_recording = False
+
+        def start_recording(self):
+            self.is_recording = True
+
+        def stop_recording(self):
+            self.is_recording = False
+            return audio_path
+
+        def cancel(self):
+            self.is_recording = False
+
+    page._voice_recorder = FakeRecorder()
     monkeypatch.setattr(
-        "app.ui.pages.chat_page.QFileDialog.getOpenFileName",
-        lambda *args, **kwargs: ("/tmp/voice.wav", "Audio Files (*.wav *.mp3 *.m4a)"),
+        VoiceService, "transcribe_file", lambda self, path: "متن تشخیص داده‌شده"
     )
-    monkeypatch.setattr(VoiceService, "transcribe_file", lambda self, path: "متن تشخیص داده‌شده")
 
     page.voice_button.click()
+    assert page._voice_recorder.is_recording is True
+    assert "در حال ضبط" in page.status_label.text()
+
+    page.voice_button.click()
+    assert wait_for(lambda: page._voice_worker is None)
 
     assert page.chat_input.toPlainText() == "متن تشخیص داده‌شده"
     assert "صدا" in page.status_label.text()
+    assert not audio_path.exists()
 
 
-def test_page_rejects_unsupported_audio_types(qt_app, tmp_path, monkeypatch):
+def test_page_reports_microphone_start_failure(qt_app, tmp_path, monkeypatch):
     page = make_page(qt_app, tmp_path, monkeypatch)
 
-    monkeypatch.setattr(
-        "app.ui.pages.chat_page.QFileDialog.getOpenFileName",
-        lambda *args, **kwargs: ("/tmp/voice.txt", "Text Files (*.txt)"),
-    )
+    class FailingRecorder:
+        is_recording = False
+
+        def start_recording(self):
+            raise VoiceRecorderError("میکروفن در دسترس نیست.")
+
+        def cancel(self):
+            pass
+
+    from app.services.voice_recorder import VoiceRecorderError
+
+    page._voice_recorder = FailingRecorder()
 
     page.voice_button.click()
 
-    assert "فقط فایل‌های صوتی" in page.status_label.text()
+    assert "میکروفن در دسترس نیست" in page.status_label.text()
     assert page.chat_input.toPlainText() == ""
 
 

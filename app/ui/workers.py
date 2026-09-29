@@ -8,6 +8,7 @@ from pathlib import Path
 from PySide6.QtCore import QThread, Signal
 
 from app.services.chat_service import ChatService, describe_error
+from app.services.voice_service import VoiceService
 from app.services.updater import (
     UpdateInfo,
     download_update,
@@ -86,6 +87,26 @@ class ConnectionTestWorker(QThread):
             self.succeeded.emit(self._service.check_connection())
         except Exception as error:  # noqa: BLE001 - همه خطاها به پیام کاربر تبدیل می‌شوند
             self.failed.emit(describe_error(error))
+
+
+class VoiceTranscriptionWorker(QThread):
+    """فایل ضبط‌شده را بیرون از رشته رابط به متن تبدیل و سپس حذف می‌کند."""
+
+    completed = Signal(str)
+    failed = Signal(str)
+
+    def __init__(self, service: VoiceService, audio_path: Path) -> None:
+        super().__init__()
+        self._service = service
+        self._audio_path = Path(audio_path)
+
+    def run(self) -> None:
+        try:
+            self.completed.emit(self._service.transcribe_file(self._audio_path))
+        except Exception as error:  # noqa: BLE001 - پیام خطای قابل نمایش لازم است.
+            self.failed.emit(str(error))
+        finally:
+            self._audio_path.unlink(missing_ok=True)
 
 
 class UpdateCheckWorker(QThread):

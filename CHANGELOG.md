@@ -2,6 +2,17 @@
 
 All notable changes for this project are documented here.
 
+## [0.1.4] - 2026-09-29
+
+### Added
+
+- In-app microphone recording with speech-to-text in Chat and PDF; no external audio-file selection is required.
+- Temporary microphone recordings are removed after transcription.
+
+### Testing
+
+- Added tests for PCM conversion, WAV recording, temporary-file cleanup, and both page integrations.
+
 ## [0.1.3] - 2026-09-29
 
 ### Fixed

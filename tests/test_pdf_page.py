@@ -185,22 +185,45 @@ def test_page_reports_missing_api_key(qt_app, tmp_path, monkeypatch, wait_for):
         page.deleteLater()
 
 
-def test_page_can_transcribe_selected_audio_into_question_input(qt_app, tmp_path, monkeypatch):
+def test_page_records_microphone_and_adds_transcription_to_question(
+    qt_app, tmp_path, monkeypatch, wait_for
+):
     page = make_page(qt_app, tmp_path, monkeypatch)
     path = make_pdf(tmp_path / "doc.pdf", ["Some text"])
+    audio_path = tmp_path / "recording.wav"
+    audio_path.write_bytes(b"recorded audio")
 
     try:
         assert page.load_document(str(path)) is True
+
+        class FakeRecorder:
+            is_recording = False
+
+            def start_recording(self):
+                self.is_recording = True
+
+            def stop_recording(self):
+                self.is_recording = False
+                return audio_path
+
+            def cancel(self):
+                self.is_recording = False
+
+        page._voice_recorder = FakeRecorder()
         monkeypatch.setattr(
-            "app.ui.pages.pdf_page.QFileDialog.getOpenFileName",
-            lambda *args, **kwargs: ("/tmp/voice.wav", "Audio Files (*.wav *.mp3 *.m4a)"),
+            VoiceService, "transcribe_file", lambda self, file_path: "متن تشخیص داده‌شده"
         )
-        monkeypatch.setattr(VoiceService, "transcribe_file", lambda self, file_path: "متن تشخیص داده‌شده")
 
         page.voice_button.click()
+        assert page._voice_recorder.is_recording is True
+        assert "در حال ضبط" in page.status_label.text()
+
+        page.voice_button.click()
+        assert wait_for(lambda: page._voice_worker is None)
 
         assert page.chat_input.toPlainText() == "متن تشخیص داده‌شده"
         assert "صدا" in page.status_label.text()
+        assert not audio_path.exists()
     finally:
         page.deleteLater()
 

@@ -2,14 +2,15 @@
 
 A modular Windows desktop assistant built with Python and PySide6.
 
-Current release: **0.1.3**
+Current release: **0.1.4**
 
-The `v0.1.3` GitHub release provides a portable ZIP, the updater executable, and a Windows
+The `v0.1.4` GitHub release provides a portable ZIP, the updater executable, and a Windows
 Setup installer with the standard location and shortcut wizard.
 
 ## Core features
 
 * Persian desktop chat with streaming responses through OpenAI-compatible APIs.
+* In-app microphone recording and speech-to-text in Chat and PDF.
 * Local conversations, notes, tasks, memories, global search, reminders, and backups.
 * PDF extraction and question answering across one or more open documents.
 * Light, dark, and system appearance modes.
@@ -67,15 +68,16 @@ file or its contents.
 
 The application stores conversations, notes, tasks, memories, UI state, and backups locally on
 the user's computer. When an AI feature is used, relevant data is sent to the configured AI
-provider: chat messages are sent for chat responses, active memories may be included as context,
-and PDF text or selected PDF chunks may be sent for PDF questions. The application does not send
+provider: recorded microphone audio is sent for transcription, chat messages are sent for chat
+responses, active memories may be included as context, and PDF text or selected PDF chunks may
+be sent for PDF questions. Temporary microphone recordings are deleted after transcription. The application does not send
 all local data automatically; for example, unrelated notes, tasks, and disabled memories are not
 part of a chat request. JSON backups may contain sensitive conversations, notes, tasks, and
 memories. Backups are local files and are not encrypted by this application.
 
 ## Release files
 
-The authoritative application version is `0.1.3`. See [CHANGELOG.md](CHANGELOG.md) for the
+The authoritative application version is `0.1.4`. See [CHANGELOG.md](CHANGELOG.md) for the
 current release summary. Optional semantic PDF retrieval is installed separately with
 `requirements-embeddings.txt`; without it, multilingual lexical retrieval remains available.
 

@@ -22,10 +22,11 @@ from PySide6.QtWidgets import (
 
 from app.services.chat_service import MAX_HISTORY_MESSAGES, ChatService
 from app.services.storage import ConversationStore
+from app.services.voice_recorder import MicrophoneRecorder, VoiceRecorderError
 from app.services.voice_service import VoiceService
 from app.ui.widgets.chat_bubble import MessageBubble
 from app.ui.widgets.chat_input import ChatInput
-from app.ui.workers import ChatStreamWorker
+from app.ui.workers import ChatStreamWorker, VoiceTranscriptionWorker
 
 EMPTY_STATE_TEXT = (
     "پیام خود را بنویسید تا گفتگو شروع شود.\n"
@@ -62,6 +63,9 @@ class ChatPage(QWidget):
         self._history: list[dict[str, str]] = []
         self._message_rows: list[QWidget] = []
         self._worker: ChatStreamWorker | None = None
+        self._voice_worker: VoiceTranscriptionWorker | None = None
+        self._voice_recorder = MicrophoneRecorder(self)
+        self._voice_recorder.failed.connect(self._on_voice_recording_failed)
         self._streaming_bubble: MessageBubble | None = None
         self._generation = 0
         self._pending_text = ""
@@ -228,7 +232,7 @@ class ChatPage(QWidget):
         self.voice_button = QPushButton("🎙️")
         self.voice_button.setObjectName("ghostButton")
         self.voice_button.setFixedSize(44, 44)
-        self.voice_button.setToolTip("انتخاب فایل صوتی و تبدیل آن به متن")
+        self.voice_button.setToolTip("شروع ضبط صدا از میکروفن")
         self.voice_button.clicked.connect(self._handle_voice_input)
 
         self.send_button = QPushButton("ارسال")
@@ -369,6 +373,11 @@ class ChatPage(QWidget):
 
     def shutdown(self) -> None:
         """درخواست در حال اجرا را متوقف می‌کند تا برنامه بدون هشدار بسته شود."""
+        self._voice_recorder.cancel()
+        if self._voice_worker is not None:
+            self._voice_worker.wait()
+            self._voice_worker = None
+
         worker = self._worker
         if worker is None:
             return
@@ -395,33 +404,52 @@ class ChatPage(QWidget):
         self._send(self.chat_input.take_text())
 
     def _handle_voice_input(self) -> None:
-        """یک فایل صوتی انتخاب می‌کند و آن را به متن تبدیل می‌کند."""
-        if self._is_busy:
+        """با دو بار کلیک، صدای میکروفن را ضبط و به متن تبدیل می‌کند."""
+        if self._is_busy or self._voice_worker is not None:
             return
 
-        path, _filter = QFileDialog.getOpenFileName(
-            self,
-            "انتخاب فایل صوتی",
-            "",
-            "Audio Files (*.wav *.mp3 *.m4a *.aac *.ogg *.flac);;All Files (*.*)",
-        )
+        if not self._voice_recorder.is_recording:
+            voice_service = VoiceService(self._service._settings)
+            if not voice_service.is_configured():
+                self._set_status(
+                    "برای تبدیل صدا، ابتدا کلید API را در تنظیمات وارد کنید."
+                )
+                return
 
-        if not path:
-            return
+            try:
+                self._voice_recorder.start_recording()
+            except VoiceRecorderError as error:
+                self._set_status(str(error))
+                return
 
-        file_suffix = Path(path).suffix.lower()
-        supported = {".wav", ".mp3", ".m4a", ".aac", ".ogg", ".flac"}
-        if file_suffix not in supported:
-            self._set_status("فقط فایل‌های صوتی با فرمت wav، mp3، m4a، aac، ogg و flac پشتیبانی می‌شوند.")
+            self.voice_button.setText("■")
+            self.voice_button.setToolTip("توقف ضبط و تبدیل صدا به متن")
+            self._set_status("در حال ضبط از میکروفن؛ برای پایان دوباره دکمه را بزنید.")
             return
 
         try:
-            voice_service = VoiceService(self._service._settings)
-            transcript = voice_service.transcribe_file(path)
-        except Exception as error:  # noqa: BLE001 - نشان دادن پیام کاربر مهم‌تر از نوع خطا است.
+            audio_path = self._voice_recorder.stop_recording()
+        except VoiceRecorderError as error:
+            self.voice_button.setText("🎙️")
+            self.voice_button.setToolTip("شروع ضبط صدا از میکروفن")
             self._set_status(str(error))
             return
 
+        self.voice_button.setEnabled(False)
+        self.voice_button.setText("…")
+        self.voice_button.setToolTip("در حال تبدیل صدای ضبط‌شده")
+        self._set_status("ضبط تمام شد؛ در حال تبدیل صدا به متن…")
+        worker = VoiceTranscriptionWorker(
+            VoiceService(self._service._settings), audio_path
+        )
+        worker.completed.connect(self._on_voice_transcribed)
+        worker.failed.connect(self._on_voice_transcription_failed)
+        worker.finished.connect(self._on_voice_worker_finished)
+        self._voice_worker = worker
+        worker.start()
+
+    def _on_voice_transcribed(self, transcript: str) -> None:
+        """متن تشخیص‌داده‌شده را به کادر پیام اضافه می‌کند."""
         current = self.chat_input.toPlainText().strip()
         if current:
             self.chat_input.setPlainText(f"{current}\n{transcript}")
@@ -429,6 +457,20 @@ class ChatPage(QWidget):
             self.chat_input.setPlainText(transcript)
 
         self._set_status("متن صدا به ورودی گفتگو اضافه شد.")
+
+    def _on_voice_transcription_failed(self, message: str) -> None:
+        self._set_status(f"تبدیل صدا ناموفق بود: {message}")
+
+    def _on_voice_recording_failed(self, message: str) -> None:
+        self.voice_button.setText("🎙️")
+        self.voice_button.setToolTip("شروع ضبط صدا از میکروفن")
+        self._set_status(message)
+
+    def _on_voice_worker_finished(self) -> None:
+        self._voice_worker = None
+        self.voice_button.setEnabled(True)
+        self.voice_button.setText("🎙️")
+        self.voice_button.setToolTip("شروع ضبط صدا از میکروفن")
 
     def _send(self, text: str) -> None:
         """پیام کاربر را نمایش می‌دهد و پاسخ مدل را به‌صورت جریانی دریافت می‌کند."""
