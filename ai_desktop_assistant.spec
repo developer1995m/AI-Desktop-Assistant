@@ -15,7 +15,14 @@ analysis = Analysis(
     datas=[("assets/app_icon.ico", "assets")],
     # PyMuPDF و python-dotenv ماژول‌هایی دارند که PyInstaller خودکار تشخیص نمی‌دهد.
     # httpx2 هم در تابعی داخل کد import می‌شود (کلاینت بدون پروکسی سرویس‌های محلی).
-    hiddenimports=["pymupdf", "dotenv", "openai", "httpx2", "PySide6.QtMultimedia"],
+    hiddenimports=[
+        "pymupdf",
+        "dotenv",
+        "openai",
+        "httpx2",
+        "PySide6.QtMultimedia",
+        "_sounddevice_data",
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

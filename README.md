@@ -2,9 +2,9 @@
 
 A modular Windows desktop assistant built with Python and PySide6.
 
-Current release: **0.1.6**
+Current release: **0.1.7**
 
-The `v0.1.6` GitHub release provides a portable ZIP, the updater executable, and a Windows
+The `v0.1.7` GitHub release provides a portable ZIP, the updater executable, and a Windows
 Setup installer with the standard location and shortcut wizard.
 
 ## Core features
@@ -77,7 +77,7 @@ memories. Backups are local files and are not encrypted by this application.
 
 ## Release files
 
-The authoritative application version is `0.1.6`. See [CHANGELOG.md](CHANGELOG.md) for the
+The authoritative application version is `0.1.7`. See [CHANGELOG.md](CHANGELOG.md) for the
 current release summary. Optional semantic PDF retrieval is installed separately with
 `requirements-embeddings.txt`; without it, multilingual lexical retrieval remains available.
 

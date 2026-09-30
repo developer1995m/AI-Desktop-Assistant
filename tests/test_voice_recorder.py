@@ -227,6 +227,80 @@ def test_recorder_falls_back_to_default_qt_audio_source(monkeypatch):
     assert FakeSource.attempts == [True, False]
 
 
+def test_recorder_uses_portaudio_when_qt_returns_empty_input(monkeypatch):
+    requested = audio_format(QAudioFormat.SampleFormat.Int16, 1)
+
+    class FakeDevice:
+        def isNull(self):
+            return False
+
+        def isFormatSupported(self, _audio_format):
+            return True
+
+        def preferredFormat(self):
+            return requested
+
+        def description(self):
+            return "Test microphone"
+
+    class EmptyQtSource:
+        def __init__(self, *_args):
+            self.stateChanged = self._Signal()
+
+        class _Signal:
+            def connect(self, _callback):
+                pass
+
+        def setBufferSize(self, _size):
+            pass
+
+        def start(self):
+            return None
+
+        def error(self):
+            return QAudio.Error.NoError
+
+        def stop(self):
+            pass
+
+        def deleteLater(self):
+            pass
+
+    class FakePortAudioStream:
+        def __init__(self, **kwargs):
+            self.callback = kwargs["callback"]
+
+        def start(self):
+            self.callback(b"\x01\x00\x02\x00", 2, None, None)
+
+        def stop(self):
+            pass
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(
+        voice_recorder.QMediaDevices,
+        "defaultAudioInput",
+        staticmethod(lambda: FakeDevice()),
+    )
+    monkeypatch.setattr(voice_recorder, "QAudioSource", EmptyQtSource)
+    monkeypatch.setattr(voice_recorder.sd, "RawInputStream", FakePortAudioStream)
+
+    recorder = MicrophoneRecorder()
+    recorder.start_recording()
+    assert recorder.is_recording
+
+    path = recorder.stop_recording()
+    try:
+        with wave.open(str(path), "rb") as recorded:
+            assert recorded.getnchannels() == 1
+            assert recorded.getframerate() == 16_000
+            assert recorded.readframes(2) == b"\x01\x00\x02\x00"
+    finally:
+        path.unlink(missing_ok=True)
+
+
 def test_transcription_worker_deletes_recording_after_failure(tmp_path):
     path = tmp_path / "recording.wav"
     path.write_bytes(b"temporary audio")

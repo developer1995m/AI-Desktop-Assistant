@@ -7,6 +7,7 @@ import tempfile
 import wave
 from pathlib import Path
 
+import sounddevice as sd
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtMultimedia import QAudio, QAudioFormat, QAudioSource, QMediaDevices
 
@@ -62,6 +63,8 @@ class MicrophoneRecorder(QObject):
         self._format: QAudioFormat | None = None
         self._raw_audio = bytearray()
         self._recording = False
+        self._portaudio_stream = None
+        self._portaudio_audio = bytearray()
 
     @property
     def is_recording(self) -> bool:
@@ -119,10 +122,15 @@ class MicrophoneRecorder(QObject):
         if source is None or audio_format is None or self._input is None:
             self._input = None
             error_name = getattr(last_error, "name", str(last_error))
-            raise VoiceRecorderError(
-                f"دسترسی به میکروفن ممکن نشد ({device.description()}، خطای {error_name}). "
-                "مجوز میکروفن و اتصال دستگاه را بررسی کنید."
-            )
+            try:
+                self._start_portaudio_recording()
+                return
+            except Exception as portaudio_error:  # noqa: BLE001 - پیام نهایی باید قابل‌خواندن باشد.
+                raise VoiceRecorderError(
+                    f"دسترسی به میکروفن ممکن نشد ({device.description()}، خطای {error_name}). "
+                    f"مسیر جایگزین PortAudio هم ناموفق بود: {portaudio_error}. "
+                    "مجوز میکروفن و اتصال دستگاه را بررسی کنید."
+                ) from portaudio_error
 
         self._raw_audio.clear()
         self._format = audio_format
@@ -132,8 +140,48 @@ class MicrophoneRecorder(QObject):
         self._input.readyRead.connect(self._read_audio)
         self.recording_changed.emit(True)
 
+    def _start_portaudio_recording(self) -> None:
+        """وقتی backend Qt در نسخه بسته‌شده شکست خورد، با PortAudio ضبط می‌کند."""
+        self._portaudio_audio.clear()
+
+        def _on_audio(data, _frames, _time, status):
+            if status:
+                return
+            self._portaudio_audio.extend(bytes(data))
+
+        stream = sd.RawInputStream(
+            samplerate=16_000,
+            blocksize=0,
+            channels=1,
+            dtype="int16",
+            callback=_on_audio,
+        )
+        stream.start()
+        self._portaudio_stream = stream
+        self._format = self._portaudio_format()
+        self._recording = True
+        self.recording_changed.emit(True)
+
+    def _portaudio_format(self) -> QAudioFormat:
+        audio_format = QAudioFormat()
+        audio_format.setSampleRate(16_000)
+        audio_format.setChannelCount(1)
+        audio_format.setSampleFormat(QAudioFormat.SampleFormat.Int16)
+        return audio_format
+
     def stop_recording(self) -> Path:
         """ضبط را متوقف و صدای ثبت‌شده را در WAV موقت ذخیره می‌کند."""
+        if self._portaudio_stream is not None:
+            stream = self._portaudio_stream
+            self._portaudio_stream = None
+            self._recording = False
+            stream.stop()
+            stream.close()
+            self.recording_changed.emit(False)
+            pcm_data = bytes(self._portaudio_audio)
+            self._portaudio_audio.clear()
+            return self._write_wav(pcm_data, self._portaudio_format())
+
         if not self._recording or self._source is None or self._format is None:
             raise VoiceRecorderError("ضبط فعالی برای توقف وجود ندارد.")
 
@@ -154,19 +202,7 @@ class MicrophoneRecorder(QObject):
             if not pcm_data:
                 raise VoiceRecorderError("صدایی ضبط نشد؛ دوباره تلاش کنید.")
 
-            temporary = tempfile.NamedTemporaryFile(
-                prefix="ai-desktop-assistant-voice-",
-                suffix=".wav",
-                delete=False,
-            )
-            path = Path(temporary.name)
-            temporary.close()
-            with wave.open(str(path), "wb") as output:
-                output.setnchannels(1)
-                output.setsampwidth(2)
-                output.setframerate(audio_format.sampleRate())
-                output.writeframes(pcm_data)
-            return path
+            return self._write_wav(pcm_data, audio_format)
         except (OSError, wave.Error) as error:
             if path is not None:
                 path.unlink(missing_ok=True)
@@ -174,10 +210,37 @@ class MicrophoneRecorder(QObject):
         finally:
             self._raw_audio.clear()
 
+    def _write_wav(self, pcm_data: bytes, audio_format: QAudioFormat) -> Path:
+        temporary = tempfile.NamedTemporaryFile(
+            prefix="ai-desktop-assistant-voice-",
+            suffix=".wav",
+            delete=False,
+        )
+        path = Path(temporary.name)
+        temporary.close()
+        try:
+            with wave.open(str(path), "wb") as output:
+                output.setnchannels(1)
+                output.setsampwidth(2)
+                output.setframerate(audio_format.sampleRate())
+                output.writeframes(pcm_data)
+            return path
+        except (OSError, wave.Error) as error:
+            path.unlink(missing_ok=True)
+            raise VoiceRecorderError(f"ذخیره صدای ضبط‌شده ممکن نشد: {error}") from error
+
     def cancel(self) -> None:
         """ضبط جاری را بدون ساخت فایل لغو می‌کند."""
         was_recording = self._recording
         self._recording = False
+        if self._portaudio_stream is not None:
+            self._portaudio_stream.stop()
+            self._portaudio_stream.close()
+            self._portaudio_stream = None
+            self._portaudio_audio.clear()
+            if was_recording:
+                self.recording_changed.emit(False)
+            return
         if self._source is not None:
             self._source.stop()
             self._source.deleteLater()
