@@ -91,20 +91,30 @@ class MicrophoneRecorder(QObject):
         for candidate in formats:
             if not candidate.isValid():
                 continue
-            candidate_source = QAudioSource(device, candidate, self)
-            candidate_source.setBufferSize(max(candidate.bytesPerFrame() * 4096, 8192))
-            candidate_source.stateChanged.connect(self._on_source_state_changed)
-            candidate_input = candidate_source.start()
-            candidate_error = candidate_source.error()
-            if candidate_input is not None and candidate_error == QAudio.Error.NoError:
-                source = candidate_source
-                audio_format = candidate
-                self._input = candidate_input
-                break
+            for use_explicit_device in (True, False):
+                candidate_source = (
+                    QAudioSource(device, candidate, self)
+                    if use_explicit_device
+                    else QAudioSource(candidate, self)
+                )
+                candidate_source.setBufferSize(
+                    max(candidate.bytesPerFrame() * 4096, 8192)
+                )
+                candidate_source.stateChanged.connect(self._on_source_state_changed)
+                candidate_input = candidate_source.start()
+                candidate_error = candidate_source.error()
+                if candidate_input is not None and candidate_error == QAudio.Error.NoError:
+                    source = candidate_source
+                    audio_format = candidate
+                    self._input = candidate_input
+                    break
 
-            last_error = candidate_error
-            candidate_source.stop()
-            candidate_source.deleteLater()
+                last_error = candidate_error
+                candidate_source.stop()
+                candidate_source.deleteLater()
+
+            if source is not None:
+                break
 
         if source is None or audio_format is None or self._input is None:
             self._input = None

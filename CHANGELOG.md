@@ -2,6 +2,16 @@
 
 All notable changes for this project are documented here.
 
+## [0.1.6] - 2026-09-30
+
+### Fixed
+
+- Microphone recording now retries with Qt's default audio source when a packaged Windows backend returns an empty input with `NoError`.
+
+### Testing
+
+- Added regression coverage for the empty-input fallback path.
+
 ## [0.1.5] - 2026-09-29
 
 ### Fixed

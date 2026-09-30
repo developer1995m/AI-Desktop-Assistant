@@ -126,8 +126,8 @@ def test_recorder_falls_back_to_preferred_device_format(monkeypatch):
         readyRead = _Signal()
 
     class FakeSource:
-        def __init__(self, _device, audio_format, _parent):
-            self.audio_format = audio_format
+        def __init__(self, *args):
+            self.audio_format = args[-2] if len(args) == 3 else args[0]
             self.input = FakeInput()
 
         def setBufferSize(self, _size):
@@ -163,6 +163,68 @@ def test_recorder_falls_back_to_preferred_device_format(monkeypatch):
 
     assert recorder.is_recording
     assert recorder._format == preferred
+
+
+def test_recorder_falls_back_to_default_qt_audio_source(monkeypatch):
+    requested = audio_format(QAudioFormat.SampleFormat.Int16, 1)
+
+    class FakeDevice:
+        def isNull(self):
+            return False
+
+        def isFormatSupported(self, _audio_format):
+            return True
+
+        def preferredFormat(self):
+            return requested
+
+        def description(self):
+            return "Test microphone"
+
+    class FakeInput:
+        class _Signal:
+            def connect(self, _callback):
+                pass
+
+        readyRead = _Signal()
+
+    class FakeSource:
+        attempts = []
+
+        def __init__(self, *args):
+            self.explicit = len(args) == 3
+            self.attempts.append(self.explicit)
+            self.input = FakeInput()
+
+        def setBufferSize(self, _size):
+            pass
+
+        def start(self):
+            return None if self.explicit else self.input
+
+        def error(self):
+            return QAudio.Error.NoError
+
+        def stop(self):
+            pass
+
+        def deleteLater(self):
+            pass
+
+        stateChanged = FakeInput._Signal()
+
+    monkeypatch.setattr(
+        voice_recorder.QMediaDevices,
+        "defaultAudioInput",
+        staticmethod(lambda: FakeDevice()),
+    )
+    monkeypatch.setattr(voice_recorder, "QAudioSource", FakeSource)
+
+    recorder = MicrophoneRecorder()
+    recorder.start_recording()
+
+    assert recorder.is_recording
+    assert FakeSource.attempts == [True, False]
 
 
 def test_transcription_worker_deletes_recording_after_failure(tmp_path):
