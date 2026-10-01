@@ -77,7 +77,7 @@ memories. Backups are local files and are not encrypted by this application.
 
 ## Release files
 
-The authoritative application version is `0.1.7`. See [CHANGELOG.md](CHANGELOG.md) for the
+The authoritative application version is `0.1.8`. See [CHANGELOG.md](CHANGELOG.md) for the
 current release summary. Optional semantic PDF retrieval is installed separately with
 `requirements-embeddings.txt`; without it, multilingual lexical retrieval remains available.
 

@@ -2,6 +2,17 @@
 
 All notable changes for this project are documented here.
 
+## [0.1.8] - 2026-10-01
+
+### Fixed
+
+- Improved microphone fallback when Windows does not provide a usable default input device.
+- Gemini voice transcription now uses the configured Gemini model and requests Persian-script output.
+
+### Testing
+
+- Added regression coverage for alternate microphone selection and Gemini audio transcription.
+
 ## [0.1.7] - 2026-09-30
 
 ### Fixed

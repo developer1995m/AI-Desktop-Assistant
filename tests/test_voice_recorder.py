@@ -165,6 +165,80 @@ def test_recorder_falls_back_to_preferred_device_format(monkeypatch):
     assert recorder._format == preferred
 
 
+def test_recorder_uses_first_available_input_when_default_is_missing(monkeypatch):
+    preferred = audio_format(QAudioFormat.SampleFormat.Int16, 1)
+
+    class NullDevice:
+        def isNull(self):
+            return True
+
+        def description(self):
+            return "No default device"
+
+    class FakeDevice:
+        def isNull(self):
+            return False
+
+        def isFormatSupported(self, _audio_format):
+            return True
+
+        def preferredFormat(self):
+            return preferred
+
+        def description(self):
+            return "Fallback microphone"
+
+    class FakeInput(QObject):
+        readyRead = Signal()
+
+        def bytesAvailable(self):
+            return 0
+
+        def readAll(self):
+            return b""
+
+    class FakeSource(QObject):
+        stateChanged = Signal(object)
+
+        def __init__(self, *_args):
+            super().__init__()
+            self.input = FakeInput()
+
+        def setBufferSize(self, _size):
+            pass
+
+        def start(self):
+            return self.input
+
+        def error(self):
+            return QAudio.Error.NoError
+
+        def stop(self):
+            pass
+
+        def deleteLater(self):
+            pass
+
+    monkeypatch.setattr(
+        voice_recorder.QMediaDevices,
+        "defaultAudioInput",
+        staticmethod(lambda: NullDevice()),
+    )
+    monkeypatch.setattr(
+        voice_recorder.QMediaDevices,
+        "audioInputs",
+        staticmethod(lambda: [FakeDevice()]),
+    )
+    monkeypatch.setattr(voice_recorder, "QAudioSource", FakeSource)
+
+    recorder = MicrophoneRecorder()
+    recorder.start_recording()
+
+    assert recorder.is_recording
+    assert recorder._format.sampleRate() == 16_000
+    assert recorder._format.channelCount() == 1
+
+
 def test_recorder_falls_back_to_default_qt_audio_source(monkeypatch):
     requested = audio_format(QAudioFormat.SampleFormat.Int16, 1)
 

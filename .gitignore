@@ -13,6 +13,7 @@ __pycache__/
 # Build artifacts
 build/
 dist/
+dist-*/
 *.spec
 !ai_desktop_assistant.spec
 !updater.spec

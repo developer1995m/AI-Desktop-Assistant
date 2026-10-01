@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import base64
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from openai import OpenAI
 
@@ -41,15 +43,44 @@ class VoiceService:
         try:
             mime_type = self._mime_type_for(file_path)
             client = OpenAI(**self._client_options())
-            with file_path.open("rb") as audio_file:
-                result = client.audio.transcriptions.create(
-                    model=self.DEFAULT_MODEL,
-                    file=(file_path.name, audio_file, mime_type),
+            if self._uses_gemini_audio_endpoint():
+                encoded_audio = base64.b64encode(file_path.read_bytes()).decode("ascii")
+                result = client.chat.completions.create(
+                    model=self._settings.model,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": (
+                                        "Transcribe the speech in this audio as Persian (Farsi). "
+                                        "Write the transcript in Persian script, not Devanagari. "
+                                        "Return only the transcript; do not translate it."
+                                    ),
+                                },
+                                {
+                                    "type": "input_audio",
+                                    "input_audio": {
+                                        "data": encoded_audio,
+                                        "format": file_path.suffix.lower().lstrip("."),
+                                    },
+                                },
+                            ],
+                        }
+                    ],
                 )
+                text = result.choices[0].message.content
+            else:
+                with file_path.open("rb") as audio_file:
+                    result = client.audio.transcriptions.create(
+                        model=self.DEFAULT_MODEL,
+                        file=(file_path.name, audio_file, mime_type),
+                    )
 
-            text = getattr(result, "text", None)
-            if text is None:
-                text = str(result)
+                text = getattr(result, "text", None)
+                if text is None:
+                    text = str(result)
 
             cleaned = str(text).strip()
             if not cleaned:
@@ -73,6 +104,12 @@ class VoiceService:
             ".flac": "audio/flac",
         }
         return mapping.get(suffix, "application/octet-stream")
+
+    def _uses_gemini_audio_endpoint(self) -> bool:
+        """آیا Base URL به endpoint سازگار Gemini اشاره می‌کند؟"""
+        return (
+            urlparse(self._settings.base_url).hostname or ""
+        ).lower() == "generativelanguage.googleapis.com"
 
     def _client_options(self) -> dict[str, Any]:
         """گزینه‌های ساخت کلاینت OpenAI را برمی‌سازد."""

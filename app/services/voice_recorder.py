@@ -70,52 +70,77 @@ class MicrophoneRecorder(QObject):
     def is_recording(self) -> bool:
         return self._recording
 
+    def _candidate_audio_devices(self) -> list:
+        """لیست دستگاه‌های ورودی معتبر را به ترتیب پیش‌فرض و سپس همه دستگاه‌ها برمی‌گرداند."""
+        candidates: list = []
+        seen: set[int] = set()
+
+        default_device = QMediaDevices.defaultAudioInput()
+        if default_device is not None and not default_device.isNull():
+            candidates.append(default_device)
+            seen.add(id(default_device))
+
+        audio_inputs = getattr(QMediaDevices, "audioInputs", lambda: [])()
+        for device in audio_inputs:
+            if device is None or device.isNull() or id(device) in seen:
+                continue
+            candidates.append(device)
+            seen.add(id(device))
+
+        return candidates
+
     def start_recording(self) -> None:
         """ضبط را با قالب PCM استاندارد آغاز می‌کند."""
         if self._recording:
             return
 
-        device = QMediaDevices.defaultAudioInput()
-        if device.isNull():
+        devices = self._candidate_audio_devices()
+        if not devices:
             raise VoiceRecorderError("میکروفنی برای ضبط پیدا نشد.")
 
         requested_format = QAudioFormat()
         requested_format.setSampleRate(16_000)
         requested_format.setChannelCount(1)
         requested_format.setSampleFormat(QAudioFormat.SampleFormat.Int16)
-        preferred_format = device.preferredFormat()
-        formats = [requested_format, preferred_format]
-        if not device.isFormatSupported(requested_format):
-            formats = [preferred_format]
 
         source = None
         audio_format = None
         last_error = QAudio.Error.NoError
-        for candidate in formats:
-            if not candidate.isValid():
-                continue
-            for use_explicit_device in (True, False):
-                candidate_source = (
-                    QAudioSource(device, candidate, self)
-                    if use_explicit_device
-                    else QAudioSource(candidate, self)
-                )
-                candidate_source.setBufferSize(
-                    max(candidate.bytesPerFrame() * 4096, 8192)
-                )
-                candidate_source.stateChanged.connect(self._on_source_state_changed)
-                candidate_input = candidate_source.start()
-                candidate_error = candidate_source.error()
-                if candidate_input is not None and candidate_error == QAudio.Error.NoError:
-                    source = candidate_source
-                    audio_format = candidate
-                    self._input = candidate_input
+        last_device = devices[0]
+        for device in devices:
+            preferred_format = device.preferredFormat()
+            formats = [requested_format, preferred_format]
+            if not device.isFormatSupported(requested_format):
+                formats = [preferred_format]
+
+            for candidate in formats:
+                if not candidate.isValid():
+                    continue
+                for use_explicit_device in (True, False):
+                    candidate_source = (
+                        QAudioSource(device, candidate, self)
+                        if use_explicit_device
+                        else QAudioSource(candidate, self)
+                    )
+                    candidate_source.setBufferSize(
+                        max(candidate.bytesPerFrame() * 4096, 8192)
+                    )
+                    candidate_source.stateChanged.connect(self._on_source_state_changed)
+                    candidate_input = candidate_source.start()
+                    candidate_error = candidate_source.error()
+                    if candidate_input is not None and candidate_error == QAudio.Error.NoError:
+                        source = candidate_source
+                        audio_format = candidate
+                        self._input = candidate_input
+                        last_device = device
+                        break
+
+                    last_error = candidate_error
+                    candidate_source.stop()
+                    candidate_source.deleteLater()
+
+                if source is not None:
                     break
-
-                last_error = candidate_error
-                candidate_source.stop()
-                candidate_source.deleteLater()
-
             if source is not None:
                 break
 
@@ -127,7 +152,7 @@ class MicrophoneRecorder(QObject):
                 return
             except Exception as portaudio_error:  # noqa: BLE001 - پیام نهایی باید قابل‌خواندن باشد.
                 raise VoiceRecorderError(
-                    f"دسترسی به میکروفن ممکن نشد ({device.description()}، خطای {error_name}). "
+                    f"دسترسی به میکروفن ممکن نشد ({last_device.description()}، خطای {error_name}). "
                     f"مسیر جایگزین PortAudio هم ناموفق بود: {portaudio_error}. "
                     "مجوز میکروفن و اتصال دستگاه را بررسی کنید."
                 ) from portaudio_error
