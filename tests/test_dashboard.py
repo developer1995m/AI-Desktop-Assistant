@@ -1,11 +1,13 @@
 """تست‌های صفحه داشبورد."""
 
+from PySide6.QtGui import QColor, QImage
 from PySide6.QtWidgets import QGridLayout, QPushButton
 
 from app.services.chat_service import ChatService
 from app.services.storage import ConversationStore
 from app.ui.main_window import MainWindow
 from app.ui.pages.dashboard_page import DashboardPage, preview_text
+from app.ui.theme import DARK, DARK_PALETTE, stylesheet
 
 from tests.test_chat_service import FakeClient, make_chunk
 from tests.test_main_window import make_window
@@ -75,6 +77,24 @@ def test_dashboard_shows_empty_state(qt_app, tmp_path):
     assert len(dashboard._rows) == 1
     assert dashboard.empty_label.isHidden() is True
     assert len(open_buttons_of(dashboard)) == 1
+
+
+def test_dashboard_scroll_background_uses_dark_theme(qt_app, tmp_path):
+    store, dashboard = make_dashboard(tmp_path)
+    dashboard.resize(900, 700)
+    dashboard.setStyleSheet(stylesheet(DARK))
+    dashboard.show()
+    qt_app.processEvents()
+
+    point = dashboard.scroll_area.viewport().mapTo(dashboard, dashboard.scroll_area.viewport().rect().topLeft())
+    image = QImage(dashboard.size(), QImage.Format.Format_ARGB32)
+    image.fill(0)
+    dashboard.render(image)
+
+    assert image.pixelColor(point) == QColor(DARK_PALETTE["window"])
+
+    dashboard.close()
+    store.close()
 
 
 def test_dashboard_stat_cards_reflow_into_two_columns(qt_app, tmp_path):

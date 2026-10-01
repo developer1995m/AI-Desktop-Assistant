@@ -125,6 +125,13 @@ def stylesheet(theme: str = DEFAULT_THEME) -> str:
                 font-size: 13px;
             }}
         """
+    output += f"""
+            #dashboardScroll,
+            #dashboardContent,
+            #dashboardScroll QWidget#qt_scrollarea_viewport {{
+                background-color: {colors['window']};
+            }}
+        """
     leftover = re.findall(r"@[A-Za-z_][A-Za-z0-9_]*", output)
     if leftover:  # pragma: no cover - محافظ نگهداری، نه مسیر عادی
         raise ValueError("توکن‌های بدون مقدار در پالت: " + ", ".join(leftover))

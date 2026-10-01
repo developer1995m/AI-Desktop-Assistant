@@ -2,6 +2,16 @@
 
 All notable changes for this project are documented here.
 
+## [0.1.9] - 2026-10-01
+
+### Fixed
+
+- Dashboard content now follows the selected theme, including its scroll-area viewport in dark mode.
+
+### Testing
+
+- Added a rendered UI regression test for the dashboard dark-theme background.
+
 ## [0.1.8] - 2026-10-01
 
 ### Fixed
