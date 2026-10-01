@@ -649,6 +649,11 @@ class SettingsPage(QWidget):
         self.update_progress.setValue(received)
 
     def _on_update_download_completed(self, downloaded: DownloadedUpdate) -> None:
+        update = self._pending_update
+        if update is None:
+            self.update_status_label.setText("اطلاعات نسخه برای نصب پیدا نشد.")
+            return
+
         answer = QMessageBox.question(
             self,
             "آماده نصب",
@@ -659,11 +664,6 @@ class SettingsPage(QWidget):
         )
         if answer != QMessageBox.StandardButton.Yes:
             self.update_status_label.setText("نصب لغو شد؛ فایل‌های دانلودشده باقی می‌مانند.")
-            return
-
-        update = self._pending_update
-        if update is None:
-            self.update_status_label.setText("اطلاعات نسخه برای نصب پیدا نشد.")
             return
 
         try:

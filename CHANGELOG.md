@@ -2,6 +2,17 @@
 
 All notable changes for this project are documented here.
 
+## [0.1.10] - 2026-10-01
+
+### Fixed
+
+- Preserve pending update metadata while the install confirmation dialog is open, so the updater starts after confirmation.
+- Synchronize Windows executable version metadata with the application version.
+
+### Testing
+
+- Added regression coverage for the download-worker completion race during update confirmation.
+
 ## [0.1.9] - 2026-10-01
 
 ### Fixed

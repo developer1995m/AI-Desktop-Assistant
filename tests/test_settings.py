@@ -1,9 +1,11 @@
 """تست‌های ذخیره تنظیمات و صفحه تنظیمات."""
 
 import pytest
+from PySide6.QtWidgets import QMessageBox
 
 from app.services.chat_service import ChatService
 from app.services.settings import AppSettings
+from app.services.updater import DownloadedUpdate, UpdateInfo
 from app.ui.main_window import MainWindow
 from app.ui.pages import settings_page as settings_page_module
 from app.ui.pages.settings_page import SettingsPage
@@ -131,6 +133,47 @@ def test_automatic_update_is_disabled_for_source_runs(
 
     assert page.update_button.isEnabled() is False
     assert "فقط در نسخه بسته‌بندی‌شده" in page.update_status_label.text()
+
+
+def test_update_confirmation_keeps_pending_update_if_worker_finishes_during_dialog(
+    qt_app, tmp_path, monkeypatch
+):
+    page = SettingsPage(make_settings(tmp_path, monkeypatch))
+    update = UpdateInfo(
+        version="v0.1.9",
+        release_name="Release v0.1.9",
+        release_url="https://github.com/example/release",
+        bundle_url="https://github.com/example/bundle.zip",
+        bundle_name="bundle.zip",
+        bundle_size=1,
+        sha256="0" * 64,
+        updater_url="https://github.com/example/updater.exe",
+        updater_name="updater.exe",
+        updater_size=1,
+        updater_sha256="1" * 64,
+    )
+    downloaded = DownloadedUpdate(tmp_path / "bundle.zip", tmp_path / "updater.exe")
+    page._pending_update = update
+    launched = []
+
+    def confirm_after_worker_finishes(*_args, **_kwargs):
+        page._on_update_download_finished()
+        return QMessageBox.StandardButton.Yes
+
+    monkeypatch.setattr(
+        settings_page_module.QMessageBox,
+        "question",
+        staticmethod(confirm_after_worker_finishes),
+    )
+    monkeypatch.setattr(
+        settings_page_module,
+        "launch_updater",
+        lambda pending_update, files: launched.append((pending_update, files)),
+    )
+
+    page._on_update_download_completed(downloaded)
+
+    assert launched == [(update, downloaded)]
 
 
 def test_settings_page_default_model_shows_placeholder(qt_app, tmp_path, monkeypatch):
