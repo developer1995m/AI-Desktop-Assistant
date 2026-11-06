@@ -42,6 +42,8 @@ from app.ui.widgets.search_dialog import SearchDialog
 from app.ui.widgets.sidebar import Sidebar
 
 REMINDER_INTERVAL_MS = 15 * 60 * 1000  # یادآوری وظایف هر ربع ساعت یک‌بار.
+AUTO_UPDATE_CHECK_DELAY_MS = 5 * 1000  # بررسی خودکار کمی پس از بالا آمدن پنجره.
+UPDATE_NOTIFICATION_TITLE = "به‌روزرسانی برنامه"
 
 
 class MainWindow(QMainWindow):
@@ -90,10 +92,13 @@ class MainWindow(QMainWindow):
             self.settings,
             self.chat_store,
             theme=self.ui_state.theme(),
+            auto_update_check=self.ui_state.auto_update_check(),
         )
         self.settings_page.saved.connect(self.chat_page.reload_configuration)
         self.settings_page.data_restored.connect(self.refresh_all_data)
         self.settings_page.theme_changed.connect(self.switch_theme)
+        self.settings_page.update_available.connect(self._on_update_available)
+        self.settings_page.auto_update_check_changed.connect(self._save_auto_update_check)
         self.page_indexes["settings"] = self.page_stack.addWidget(self.settings_page)
 
         self.notes_page = NotesPage(self.chat_store)
@@ -158,11 +163,52 @@ class MainWindow(QMainWindow):
         self.reminder_timer.start()
         self.check_task_reminders(quiet=True)
 
+        # بررسی خودکار نسخه جدید: کمی بعد از آماده‌شدن پنجره، در پس‌زمینه و
+        # فقط برای اعلان؛ دانلود و نصب همچنان با تصمیم کاربر در تنظیمات است.
+        self.update_check_timer = QTimer(self)
+        self.update_check_timer.setSingleShot(True)
+        self.update_check_timer.setInterval(AUTO_UPDATE_CHECK_DELAY_MS)
+        self.update_check_timer.timeout.connect(self.check_updates_on_startup)
+        self.update_check_timer.start()
+
     def _raise_from_tray(self) -> None:
         """پنجره را از سینی سیستم جلو می‌آورد (حتی اگر کوچک‌شده باشد)."""
         self.showNormal()
         self.raise_()
         self.activateWindow()
+
+    # --------------------------------------------------------- به‌روزرسانی
+
+    def check_updates_on_startup(self) -> None:
+        """اگر کاربر خواسته باشد، نسخه جدید را یک‌بار پس از اجرا بررسی می‌کند."""
+        if not self.ui_state.auto_update_check():
+            return
+
+        self.settings_page.check_for_updates_quietly()
+
+    def _save_auto_update_check(self, enabled: bool) -> None:
+        """ترجیح بررسی خودکار را ذخیره می‌کند تا اجرای بعدی هم همان باشد."""
+        self.ui_state.save_auto_update_check(enabled)
+
+    def _on_update_available(self, update) -> None:
+        """نسخه جدید پیدا‌شده را در سربرگ نشان می‌دهد و در صورت نیاز اعلان می‌دهد."""
+        self.update_chip.setText(f"⬆ نسخه {update.version}")
+        self.update_chip.setToolTip(
+            f"نسخه {update.version} آماده است؛ کلیک برای دریافت و نصب"
+        )
+        self.update_chip.setVisible(True)
+
+        # وقتی پنجره در پیش‌زمینه است، چیپ سربرگ کافی است و اعلان سیستمی تکراری است.
+        if not self.isActiveWindow():
+            self.reminder_tray.notify(
+                f"نسخه {update.version} آماده است. برای دریافت، بخش به‌روزرسانی را باز کنید.",
+                title=UPDATE_NOTIFICATION_TITLE,
+            )
+
+    def _open_update_section(self) -> None:
+        """تنظیمات را روی تب به‌روزرسانی باز می‌کند (کلیک روی چیپ سربرگ)."""
+        self.show_page("settings")
+        self.settings_page.show_update_tab()
 
     def _notify_reminder(self, summary: str) -> None:
         """یادآوری را فقط وقتی اعلان می‌کند که کاربر پنجره را نمی‌بیند.
@@ -286,10 +332,19 @@ class MainWindow(QMainWindow):
         self.theme_button.clicked.connect(self.toggle_theme)
         self._sync_theme_button()
 
+        # چیپ نسخه جدید؛ فقط وقتی بررسی خودکار نسخه‌ای پیدا کند دیده می‌شود.
+        self.update_chip = QPushButton()
+        self.update_chip.setObjectName("updateChip")
+        self.update_chip.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.update_chip.setFixedHeight(32)
+        self.update_chip.clicked.connect(self._open_update_section)
+        self.update_chip.setVisible(False)
+
         QShortcut(QKeySequence("Ctrl+K"), self, activated=self.open_search)
 
         layout.addWidget(title_label)
         layout.addStretch(1)
+        layout.addWidget(self.update_chip)
         layout.addWidget(self.reminder_label)
         layout.addWidget(self.search_button)
         layout.addWidget(self.theme_button)

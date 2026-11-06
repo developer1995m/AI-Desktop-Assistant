@@ -186,3 +186,52 @@ def test_setup_banner_leads_to_the_settings_page(qt_app, tmp_path, monkeypatch):
     assert bubble_texts(window.chat_page) == []
 
     window.close()
+
+
+# --------------------------------------------------- اعلان به‌روزرسانی
+
+
+def test_available_update_shows_a_chip_and_opens_the_updates_tab(
+    qt_app, tmp_path, monkeypatch
+):
+    from types import SimpleNamespace
+
+    window = make_window(qt_app, tmp_path, monkeypatch)
+    window.show()
+
+    window._on_update_available(SimpleNamespace(version="v0.1.11"))
+
+    assert window.update_chip.isVisibleTo(window) is True
+    assert "v0.1.11" in window.update_chip.text()
+
+    window.update_chip.click()
+
+    assert window.page_stack.currentWidget() is window.settings_page
+    assert window.settings_page.tabs.currentWidget() is window.settings_page.update_tab
+    window.close()
+
+
+def test_the_automatic_update_preference_controls_the_startup_check(
+    qt_app, tmp_path, monkeypatch
+):
+    ui_state = UiStateStore(tmp_path / "ui_state.json")
+    window = make_window(qt_app, tmp_path, monkeypatch, ui_state=ui_state)
+    calls: list[bool] = []
+    monkeypatch.setattr(
+        window.settings_page,
+        "check_for_updates_quietly",
+        lambda: calls.append(True),
+    )
+
+    # پیش‌فرض روشن است و بررسی هنگام اجرا انجام می‌شود.
+    assert window.settings_page.auto_update_checkbox.isChecked() is True
+    window.check_updates_on_startup()
+    assert calls == [True]
+
+    # خاموش‌کردن کادر، ترجیح را ذخیره می‌کند و بررسی بعدی را متوقف می‌کند.
+    window.settings_page.auto_update_checkbox.setChecked(False)
+    assert ui_state.auto_update_check() is False
+    window.check_updates_on_startup()
+
+    assert calls == [True]
+    window.close()

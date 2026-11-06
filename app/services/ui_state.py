@@ -20,6 +20,7 @@ MIN_HEIGHT = 500
 MAX_WIDTH = 10000
 MAX_HEIGHT = 10000
 DEFAULT_THEME = "dark"
+DEFAULT_AUTO_UPDATE_CHECK = True
 
 
 class UiStateStore:
@@ -126,3 +127,16 @@ class UiStateStore:
         from app.ui.theme import normalise_theme
 
         return self.write({"theme": normalise_theme(theme)})
+
+    def auto_update_check(self) -> bool:
+        """آیا هنگام اجرا نسخه جدید به‌طور خودکار بررسی شود؟
+
+        پیش‌فرض روشن است؛ مقدار نامعتبر ذخیره‌شده هم یعنی همان پیش‌فرض، تا یک
+        فایل وضعیت خراب برنامه را از بررسی به‌روزرسانی محروم نکند.
+        """
+        value = self.read().get("auto_update_check")
+        return value if isinstance(value, bool) else DEFAULT_AUTO_UPDATE_CHECK
+
+    def save_auto_update_check(self, enabled: bool) -> bool:
+        """ترجیح کاربر برای بررسی خودکار به‌روزرسانی را ذخیره می‌کند."""
+        return self.write({"auto_update_check": bool(enabled)})

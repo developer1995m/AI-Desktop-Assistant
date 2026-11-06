@@ -77,7 +77,7 @@ memories. Backups are local files and are not encrypted by this application.
 
 ## Release files
 
-The authoritative application version is `0.1.10`. See [CHANGELOG.md](CHANGELOG.md) for the
+The authoritative application version is `0.1.11`. See [CHANGELOG.md](CHANGELOG.md) for the
 current release summary. Optional semantic PDF retrieval is installed separately with
 `requirements-embeddings.txt`; without it, multilingual lexical retrieval remains available.
 
@@ -89,10 +89,16 @@ PyInstaller onedir folder), and `AI-Desktop-Assistant-Updater.exe`. GitHub's ass
 SHA-256 digests are required for the ZIP and updater. The updater replaces the application
 bundle only; user data remains under `%APPDATA%`.
 
+In the frozen Windows build, the **Updates** tab checks GitHub for a newer release, and once
+per startup it also checks quietly in the background. When a newer release exists, the header
+shows an update chip and — if the window is not in front — a system-tray notification says so;
+nothing is downloaded until you confirm in **Updates**. The checkbox in that tab turns the
+automatic check off, and the choice is remembered in `data/ui_state.json`.
+
 ## First run and network behaviour
 
 Until a key is saved, the chat page shows a setup banner with a button that jumps straight to
-Settings. The Settings page also has a **test connection** button that checks the values
+Settings. In its **AI** tab, Settings also has a **test connection** button that checks the values
 currently in the form — even unsaved ones — and writes nothing to disk. Invalid numbers are
 rejected with the reason instead of being saved.
 
@@ -144,7 +150,8 @@ To publish an update, set `APP_VERSION` in `app/version.py`, commit the change, 
 matching `v<version>` tag (for example, `v0.2.0`). The Windows Release workflow runs tests,
 builds the app and updater, creates the full onedir bundle and Setup installer, then publishes
 all three assets.
-The updater check and install action are available only in the frozen Windows application.
+The update check, automatic startup notification and install action are available only in the
+frozen Windows application; running from source neither checks nor installs anything.
 
 When the app runs from a bundle, the folder next to the executable may be read-only, so the
 database and `.env` move to the user data folder (`%APPDATA%\AI Desktop Assistant\`). Runs from
@@ -197,8 +204,9 @@ wildcards, and each section is capped so the list stays readable.
 
 ## Backup and restore
 
-The Settings page has a **Data** section: **Back up** writes every conversation, note, task and
-memory into one JSON file (versioned with the format name, so an alien file is rejected instead
+Settings is split into tabs (**AI**, **Appearance**, **Backup**, **Updates**), so each part stays
+short and scrolls on its own. The **Backup** tab holds the data tools: **Back up** writes every
+conversation, note, task and memory into one JSON file (versioned with the format name, so an alien file is rejected instead
 of half-imported). **Restore** shows what the file contains and asks for confirmation before it
 replaces the current data; the whole import runs in a single transaction, so a broken file
 leaves the database untouched. After a restore the sidebar, dashboard, chat, notes, tasks and

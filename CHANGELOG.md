@@ -2,6 +2,24 @@
 
 All notable changes for this project are documented here.
 
+## [0.1.11] - 2026-11-06
+
+### Added
+
+- The app now checks for a newer GitHub release once per startup and notifies the user with a
+  header chip and a system-tray notification, without downloading anything on its own.
+- The Updates tab has a checkbox for the automatic check; the choice is saved in `ui_state.json`.
+- Settings is split into scrollable **AI**, **Appearance**, **Backup** and **Updates** tabs.
+
+### Changed
+
+- Settings uses a themed tab widget with a custom combo-box chevron that is visible in both themes.
+
+### Testing
+
+- Added coverage for the automatic update notification, the opt-out preference, silent network
+  failures and the update chip opening the Updates tab.
+
 ## [0.1.10] - 2026-10-01
 
 ### Fixed

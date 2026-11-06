@@ -5,12 +5,14 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QPointF, Qt, Signal
+from PySide6.QtGui import QPainter, QPalette, QPen, QPolygonF
 from PySide6.QtWidgets import (
     QFileDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
+    QCheckBox,
     QComboBox,
     QLineEdit,
     QMessageBox,
@@ -18,6 +20,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -31,7 +34,47 @@ MODEL_OPTIONS = (
 )
 
 
-class ModelComboBox(QComboBox):
+class ChevronComboBox(QComboBox):
+    """فهرست کشویی با فلش رو به پایین در انتهای کادر.
+
+    Qt در حالت استایل‌شده فلش پیش‌فرض را رسم نمی‌کند و ناحیه کشویی به شکل
+    یک مستطیل خالی می‌ماند؛ اینجا ناحیه شفاف است و نشانگر با رنگ متن همان
+    تم کشیده می‌شود تا در هر دو تم دیده شود.
+    """
+
+    # پهنای ناحیه‌ای که فلش در انتهای کادر می‌نشیند (هم‌اندازه با استایل).
+    ARROW_SPACE = 28
+
+    def paintEvent(self, event) -> None:  # noqa: N802 - نام رخداد Qt
+        super().paintEvent(event)
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        pen = QPen(self.palette().color(QPalette.ColorRole.WindowText), 1.6)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        painter.setPen(pen)
+
+        # در چیدمان راست‌به‌چپ، انتهای کادر سمت چپ است.
+        if self.layoutDirection() == Qt.LayoutDirection.RightToLeft:
+            center_x = self.ARROW_SPACE / 2
+        else:
+            center_x = self.width() - self.ARROW_SPACE / 2
+        center_y = self.height() / 2
+
+        painter.drawPolyline(
+            QPolygonF(
+                [
+                    QPointF(center_x - 4, center_y - 2.5),
+                    QPointF(center_x, center_y + 2.5),
+                    QPointF(center_x + 4, center_y - 2.5),
+                ]
+            )
+        )
+
+
+class ModelComboBox(ChevronComboBox):
     """فهرست مدل با API سازگار با ورودی متنی قدیمی صفحه تنظیمات."""
 
     def __init__(self) -> None:
@@ -96,12 +139,15 @@ class SettingsPage(QWidget):
     saved = Signal()
     data_restored = Signal()
     theme_changed = Signal(str)
+    update_available = Signal(object)
+    auto_update_check_changed = Signal(bool)
 
     def __init__(
         self,
         settings: AppSettings,
         store: ConversationStore | None = None,
         theme: str = DARK,
+        auto_update_check: bool = True,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -114,38 +160,33 @@ class SettingsPage(QWidget):
         self._update_check_worker: UpdateCheckWorker | None = None
         self._update_download_worker: UpdateDownloadWorker | None = None
         self._pending_update: UpdateInfo | None = None
+        self._available_update: UpdateInfo | None = None
+        self._quiet_update_check = False
+        self._auto_update_check = auto_update_check
         self._theme = theme
 
-        # صفحه در یک QScrollArea می‌نشیند تا در پنجره‌های کوتاه، فرم و دکمه‌ها
-        # روی هم نیفتند و همه‌چیز با اسکرول در دسترس بماند.
-        content = QWidget()
-        content.setObjectName("settingsPage")
-
-        layout = QVBoxLayout(content)
+        # هر بخش تنظیمات در تب خودش می‌نشیند تا صفحه کوتاه بماند و هر بخش
+        # جداگانه اسکرول شود؛ تب‌ها از راست به چپ چیده می‌شوند.
+        layout = QVBoxLayout(self)
         layout.setContentsMargins(32, 24, 32, 24)
-        layout.setSpacing(16)
+        layout.setSpacing(14)
 
         layout.addWidget(self._create_heading())
-        layout.addWidget(self._create_form_frame(), 1)
-        layout.addWidget(self._create_update_frame())
-        layout.addWidget(self._create_data_frame())
 
-        scroll = QScrollArea()
-        scroll.setObjectName("settingsScroll")
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        # ویوپورت و ویجت محتوا شفاف می‌مانند تا پس‌زمینه صفحه دیده شود؛
-        # کادرهای داخل صفحه استایل خودشان را نگه می‌دارند.
-        scroll.setStyleSheet(
-            "QScrollArea { background: transparent; border: none; }"
-            "QScrollArea > QWidget > QWidget { background: transparent; }"
-        )
-        scroll.setWidget(content)
+        self.tabs = QTabWidget()
+        self.tabs.setObjectName("settingsTabs")
+        self.tabs.setDocumentMode(True)
+        self.tabs.setMovable(False)
+        self.tabs.setUsesScrollButtons(True)
+        self.tabs.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
 
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        outer.addWidget(scroll)
+        self.tabs.addTab(self._create_tab(self._create_form_frame()), "هوش مصنوعی")
+        self.tabs.addTab(self._create_tab(self._create_appearance_frame()), "ظاهر")
+        self.tabs.addTab(self._create_tab(self._create_data_frame()), "پشتیبان‌گیری")
+        self.update_tab = self._create_tab(self._create_update_frame())
+        self.tabs.addTab(self.update_tab, "به‌روزرسانی")
+
+        layout.addWidget(self.tabs, 1)
 
         self.reload()
 
@@ -180,6 +221,33 @@ class SettingsPage(QWidget):
         row_layout.addWidget(widget, 1)
         form_layout.addWidget(row)
 
+    def _create_tab(self, frame: QFrame) -> QScrollArea:
+        """یک تب با اسکرول مستقل می‌سازد تا هر بخش جداگانه در دسترس بماند."""
+        content = QWidget()
+        content.setObjectName("settingsTabContent")
+
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(14)
+        layout.addWidget(frame)
+        layout.addStretch(1)
+
+        scroll = QScrollArea()
+        scroll.setObjectName("settingsScroll")
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        # ویوپورت و ویجت محتوا شفاف می‌مانند تا پس‌زمینه صفحه دیده شود؛
+        # کادرهای داخل تب استایل خودشان را نگه می‌دارند.
+        scroll.setStyleSheet(
+            "QScrollArea { background: transparent; border: none; }"
+            "QScrollArea > QWidget > QWidget { background: transparent; }"
+        )
+        scroll.viewport().setAutoFillBackground(False)
+        scroll.setWidget(content)
+
+        return scroll
+
     def _create_heading(self) -> QWidget:
         """سربرگ صفحه تنظیمات."""
         heading = QWidget()
@@ -207,7 +275,6 @@ class SettingsPage(QWidget):
         frame = QFrame()
         frame.setObjectName("settingsFrame")
         frame.setMaximumWidth(640)
-        frame.setMinimumHeight(470)
 
         frame_layout = QVBoxLayout(frame)
         frame_layout.setContentsMargins(20, 18, 20, 18)
@@ -233,14 +300,6 @@ class SettingsPage(QWidget):
             "یک مدل را از فهرست انتخاب کنید یا نام مدل سفارشی را وارد کنید."
         )
         self._add_form_row(form_layout, "مدل", self.model_input)
-
-        self.theme_input = QComboBox()
-        self.theme_input.setObjectName("settingsInput")
-        self._configure_input(self.theme_input)
-        for label, value in THEME_OPTIONS:
-            self.theme_input.addItem(label, value)
-        self.theme_input.currentIndexChanged.connect(self._theme_selection_changed)
-        self._add_form_row(form_layout, "ظاهر برنامه", self.theme_input)
 
         self.base_url_input = QLineEdit()
         self.base_url_input.setObjectName("settingsInput")
@@ -276,7 +335,7 @@ class SettingsPage(QWidget):
         self._add_form_row(form_layout, "تنوع پاسخ", self.temperature_input)
 
         # فرم نباید برای جا شدن در پنجره، فاصله ردیف‌ها را حذف یا ردیف‌ها را فشرده کند.
-        form.setMinimumHeight(7 * 44 + 6 * 14)
+        form.setMinimumHeight(6 * 44 + 5 * 14)
         frame_layout.addWidget(form)
 
         buttons = QWidget()
@@ -306,6 +365,38 @@ class SettingsPage(QWidget):
         self.status_label.setObjectName("settingsStatus")
         self.status_label.setWordWrap(True)
         frame_layout.addWidget(self.status_label)
+
+        return frame
+
+    def _create_appearance_frame(self) -> QFrame:
+        """کادر انتخاب ظاهر برنامه در تب جداگانه."""
+        frame = QFrame()
+        frame.setObjectName("settingsFrame")
+        frame.setMaximumWidth(640)
+
+        layout = QVBoxLayout(frame)
+        layout.setContentsMargins(20, 18, 20, 18)
+        layout.setSpacing(14)
+
+        heading = QLabel("ظاهر برنامه")
+        heading.setObjectName("panelHeading")
+        layout.addWidget(heading)
+
+        description = QLabel(
+            "تم انتخاب‌شده همان لحظه روی همه صفحه‌ها اعمال می‌شود و برای اجرای بعدی "
+            "برنامه ذخیره می‌ماند؛ نیازی به ذخیره جداگانه ندارد."
+        )
+        description.setObjectName("pageDescription")
+        description.setWordWrap(True)
+        layout.addWidget(description)
+
+        self.theme_input = ChevronComboBox()
+        self.theme_input.setObjectName("settingsInput")
+        self._configure_input(self.theme_input)
+        for label, value in THEME_OPTIONS:
+            self.theme_input.addItem(label, value)
+        self.theme_input.currentIndexChanged.connect(self._theme_selection_changed)
+        self._add_form_row(layout, "ظاهر برنامه", self.theme_input)
 
         return frame
 
@@ -384,6 +475,17 @@ class SettingsPage(QWidget):
         self.update_version_label.setObjectName("pageDescription")
         layout.addWidget(self.update_version_label)
 
+        # بررسی خودکار فقط اعلان می‌دهد و هیچ چیزی را بی‌اجازه دانلود نمی‌کند؛
+        # دانلود و نصب همچنان با تأیید کاربر در همین تب انجام می‌شود.
+        self.auto_update_checkbox = QCheckBox("بررسی خودکار نسخه جدید هنگام اجرا")
+        self.auto_update_checkbox.setObjectName("settingsCheck")
+        self.auto_update_checkbox.setChecked(self._auto_update_check)
+        self.auto_update_checkbox.setToolTip(
+            "اگر نسخه جدیدی در GitHub منتشر شود، برنامه هنگام اجرا اعلان می‌دهد."
+        )
+        self.auto_update_checkbox.toggled.connect(self._auto_update_toggled)
+        layout.addWidget(self.auto_update_checkbox)
+
         self.update_button = QPushButton("بررسی به‌روزرسانی")
         self.update_button.setObjectName("ghostButton")
         self.update_button.setFixedHeight(36)
@@ -447,6 +549,21 @@ class SettingsPage(QWidget):
         if theme in (DARK, LIGHT, SYSTEM):
             self._theme = theme
             self.theme_changed.emit(theme)
+
+    def show_update_tab(self) -> None:
+        """تب به‌روزرسانی را فعال می‌کند (از چیپ اعلان سربرگ)."""
+        self.tabs.setCurrentWidget(self.update_tab)
+
+    def set_auto_update_check(self, enabled: bool) -> None:
+        """وضعیت کادر بررسی خودکار را بدون انتشار تغییر هماهنگ می‌کند."""
+        self._auto_update_check = bool(enabled)
+        self.auto_update_checkbox.blockSignals(True)
+        self.auto_update_checkbox.setChecked(self._auto_update_check)
+        self.auto_update_checkbox.blockSignals(False)
+
+    def _auto_update_toggled(self, checked: bool) -> None:
+        self._auto_update_check = bool(checked)
+        self.auto_update_check_changed.emit(bool(checked))
 
     def _non_default(self, value: float | int, default: float | int) -> str:
         """مقدار را فقط وقتی نشان می‌دهد که با پیش‌فرض تفاوت داشته باشد.
@@ -585,7 +702,29 @@ class SettingsPage(QWidget):
         self.test_button.setText("تست اتصال")
 
     def check_for_updates(self) -> None:
-        """آخرین Release را در رشته پس‌زمینه بررسی می‌کند."""
+        """آخرین Release را بررسی می‌کند یا نسخه پیدا‌شده را دانلود می‌کند."""
+        # اگر بررسی خودکار همین حالا نسخه جدیدی دیده باشد، همین دکمه دانلود را
+        # شروع می‌کند تا کاربر مجبور به بررسی دوباره شبکه نباشد.
+        if self._available_update is not None:
+            update = self._available_update
+            self._available_update = None
+            self._start_update_download(update)
+            return
+
+        self._start_update_check(quiet=False)
+
+    def check_for_updates_quietly(self) -> None:
+        """بررسی خودکار پس از اجرا؛ بدون پرسش، فقط اعلان نسخه جدید.
+
+        این بررسی فقط در نسخه بسته‌بندی‌شده ویندوز معنا دارد؛ اجرای مستقیم از
+        سورس نه نصب خودکار دارد و نه باید در هر اجرا به GitHub وصل شود.
+        """
+        if sys.platform != "win32" or not is_frozen():
+            return
+
+        self._start_update_check(quiet=True)
+
+    def _start_update_check(self, *, quiet: bool) -> None:
         if self._update_check_worker is not None or self._update_download_worker is not None:
             return
 
@@ -594,17 +733,36 @@ class SettingsPage(QWidget):
         worker.failed.connect(self._on_update_check_failed)
         worker.finished.connect(self._on_update_check_finished)
         self._update_check_worker = worker
-        self.update_button.setEnabled(False)
-        self.update_button.setText("در حال بررسی…")
-        self.update_status_label.setText("در حال بررسی آخرین نسخه در GitHub…")
+        self._quiet_update_check = quiet
+
+        if not quiet:
+            self.update_button.setEnabled(False)
+            self.update_button.setText("در حال بررسی…")
+            self.update_status_label.setText("در حال بررسی آخرین نسخه در GitHub…")
+
         worker.start()
 
     def _on_update_check_completed(self, update: UpdateInfo | None) -> None:
+        quiet = self._quiet_update_check
+        self._quiet_update_check = False
+
         if update is None:
-            self.update_status_label.setText("برنامه به‌روز است.")
+            if not quiet:
+                self.update_status_label.setText("برنامه به‌روز است.")
             return
 
         size_mb = (update.bundle_size + update.updater_size) / (1024 * 1024)
+        self._available_update = update
+        self.update_button.setText(f"دریافت نسخه {update.version}")
+        self.update_status_label.setText(
+            f"نسخه {update.version} آماده است. حجم دریافت حدود {size_mb:.1f} مگابایت است."
+        )
+
+        if quiet:
+            # بررسی خودکار هیچ پنجره‌ای باز نمی‌کند؛ اعلان و چیپ سربرگ کافی است.
+            self.update_available.emit(update)
+            return
+
         answer = QMessageBox.question(
             self,
             "نسخه جدید موجود است",
@@ -614,19 +772,30 @@ class SettingsPage(QWidget):
             QMessageBox.StandardButton.No,
         )
         if answer != QMessageBox.StandardButton.Yes:
+            self._available_update = None
+            self.update_button.setText("بررسی به‌روزرسانی")
             self.update_status_label.setText("به‌روزرسانی لغو شد.")
             return
 
         self._start_update_download(update)
 
     def _on_update_check_failed(self, message: str) -> None:
+        quiet = self._quiet_update_check
+        self._quiet_update_check = False
+
+        # بررسی خودکار نباید با خطای شبکه مزاحم کاربر شود؛ فقط بررسی دستی گزارش می‌دهد.
+        if quiet:
+            return
+
         self.update_status_label.setText(f"بررسی به‌روزرسانی ناموفق بود: {message}")
 
     def _on_update_check_finished(self) -> None:
         self._update_check_worker = None
+        self._quiet_update_check = False
         if self._update_download_worker is None:
             self.update_button.setEnabled(True)
-            self.update_button.setText("بررسی به‌روزرسانی")
+            if self._available_update is None:
+                self.update_button.setText("بررسی به‌روزرسانی")
 
     def _start_update_download(self, update: UpdateInfo) -> None:
         destination = user_data_dir() / "updates"
@@ -681,6 +850,7 @@ class SettingsPage(QWidget):
     def _on_update_download_finished(self) -> None:
         self._update_download_worker = None
         self._pending_update = None
+        self._available_update = None
         self.update_button.setEnabled(True)
         self.update_button.setText("بررسی به‌روزرسانی")
         if not self.update_status_label.text().startswith("فایل‌ها دریافت"):

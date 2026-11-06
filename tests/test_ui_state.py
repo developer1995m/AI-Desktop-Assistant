@@ -142,3 +142,21 @@ def test_window_geometry_is_saved_on_close(qt_app, tmp_path, monkeypatch):
 
     assert ui_state.window_geometry() == (140, 110, 940, 610)
     assert ui_state.is_maximized() is False
+
+
+def test_auto_update_check_defaults_to_enabled(tmp_path):
+    store = UiStateStore(tmp_path / "ui_state.json")
+
+    assert store.auto_update_check() is True
+
+
+def test_auto_update_check_round_trips_and_ignores_invalid_values(tmp_path):
+    path = tmp_path / "ui_state.json"
+    store = UiStateStore(path)
+
+    assert store.save_auto_update_check(False) is True
+    assert store.auto_update_check() is False
+
+    # یک مقدار ناخواسته در فایل وضعیت نباید بررسی خودکار را خاموش کند.
+    path.write_text(json.dumps({"auto_update_check": "no"}), encoding="utf-8")
+    assert store.auto_update_check() is True

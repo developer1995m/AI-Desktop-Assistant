@@ -42,7 +42,7 @@ class ReminderTray(QObject):
     ) -> None:
         super().__init__(parent)
 
-        self._last_summary = ""
+        self._last_summary: tuple[str, str] = ("", "")
         self.tray: QSystemTrayIcon | object | None = None
 
         # تزریق شیء سینی فقط برای تست است؛ در برنامه همیشه خود Qt ساخته می‌شود
@@ -81,29 +81,29 @@ class ReminderTray(QObject):
         )
         self.tray.show()
 
-    def notify(self, summary: str) -> bool:
+    def notify(self, summary: str, *, title: str = NOTIFICATION_TITLE) -> bool:
         """خلاصه یادآوری را به‌صورت اعلان سیستمی نشان می‌دهد.
 
-        اگر سینی سیستم نبود یا همین متن قبلاً اعلان شده بود، `False` برمی‌گردد
-        (یعنی اعلانی نمایش داده نشد).
+        اگر سینی سیستم نبود یا همین متن با همین عنوان قبلاً اعلان شده بود،
+        `False` برمی‌گردد (یعنی اعلانی نمایش داده نشد).
         """
         text = (summary or "").strip()
 
         if not text:
             # چیزی برای یادآوری نیست؛ دفعه بعد باید بتوانیم دوباره اعلان دهیم.
-            self._last_summary = ""
+            self._last_summary = ("", "")
             return False
 
         if self.tray is None:
             return False
 
-        if text == self._last_summary:
+        if (title, text) == self._last_summary:
             # همین متن قبلاً اعلان شده؛ تکرارش فقط مزاحم است.
             return False
 
-        self._last_summary = text
+        self._last_summary = (title, text)
         self.tray.showMessage(
-            NOTIFICATION_TITLE,
+            title,
             text,
             QSystemTrayIcon.MessageIcon.Information,
             NOTIFICATION_DURATION_MS,
@@ -112,7 +112,7 @@ class ReminderTray(QObject):
 
     def hide(self) -> None:
         """آیکون را از سینی سیستم برمی‌دارد (هنگام خروج برنامه)."""
-        self._last_summary = ""
+        self._last_summary = ("", "")
 
         if self.tray is not None:
             self.tray.hide()

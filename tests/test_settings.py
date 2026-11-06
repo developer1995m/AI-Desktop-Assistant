@@ -377,3 +377,75 @@ def test_test_connection_does_not_overwrite_saved_values(qt_app, tmp_path, monke
 
     assert settings.api_key == "saved-key"
     assert "OPENAI_MODEL=saved-model" in settings.env_path.read_text(encoding="utf-8")
+
+
+# --------------------------------------------------- بررسی خودکار به‌روزرسانی
+
+
+def test_automatic_update_check_notifies_without_a_dialog(
+    qt_app, tmp_path, monkeypatch
+):
+    """بررسی خودکار باید فقط اعلان بدهد و دانلود را به تأیید کاربر بسپارد."""
+    from PySide6.QtCore import QObject, Signal
+
+    update = UpdateInfo(
+        version="v0.1.11",
+        release_name="Release v0.1.11",
+        release_url="https://github.com/example/release",
+        bundle_url="https://github.com/example/bundle.zip",
+        bundle_name="bundle.zip",
+        bundle_size=1024,
+        sha256="0" * 64,
+        updater_url="https://github.com/example/updater.exe",
+        updater_name="updater.exe",
+        updater_size=1024,
+        updater_sha256="1" * 64,
+    )
+
+    class FakeUpdateCheckWorker(QObject):
+        completed = Signal(object)
+        failed = Signal(str)
+        finished = Signal()
+
+        def start(self) -> None:
+            self.completed.emit(update)
+            self.finished.emit()
+
+    monkeypatch.setattr(settings_page_module, "is_frozen", lambda: True)
+    monkeypatch.setattr(settings_page_module.sys, "platform", "win32")
+    monkeypatch.setattr(settings_page_module, "UpdateCheckWorker", FakeUpdateCheckWorker)
+    page = SettingsPage(make_settings(tmp_path, monkeypatch))
+    page.update_button.setEnabled(True)
+
+    received = []
+    page.update_available.connect(received.append)
+    dialogs = []
+    monkeypatch.setattr(
+        settings_page_module.QMessageBox,
+        "question",
+        staticmethod(lambda *args, **kwargs: dialogs.append(args) or QMessageBox.StandardButton.No),
+    )
+
+    page.check_for_updates_quietly()
+
+    assert dialogs == []
+    assert received == [update]
+    assert page.update_button.text() == "دریافت نسخه v0.1.11"
+    assert "نسخه v0.1.11 آماده است" in page.update_status_label.text()
+
+    # کلیک روی همان دکمه، نسخه پیدا‌شده را بدون بررسی دوباره دانلود می‌کند.
+    downloaded = []
+    monkeypatch.setattr(page, "_start_update_download", downloaded.append)
+    page.update_button.click()
+
+    assert downloaded == [update]
+
+
+def test_quiet_update_failure_does_not_overwrite_the_status(qt_app, tmp_path, monkeypatch):
+    page = SettingsPage(make_settings(tmp_path, monkeypatch))
+    page.update_status_label.setText("وضعیت قبلی")
+
+    page._quiet_update_check = True
+    page._on_update_check_failed("اتصال قطع شد")
+
+    assert page.update_status_label.text() == "وضعیت قبلی"
